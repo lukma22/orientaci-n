@@ -8,7 +8,8 @@ Necesitas Node.js 22 o 24 (incluye npm). Descomprime el ZIP, abre la carpeta **b
 
 Copia el bloque completo:
 
-```bash
+```bash 
+
 npm ci && npm run dev
 ```
 
