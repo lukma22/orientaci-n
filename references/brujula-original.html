@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brújula — Test de orientación vocacional y empleabilidad</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;0,700;1,500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+:root{
+  --teal-900:#15302B;--teal-700:#1E4A41;--teal-500:#2E6B5D;
+  --gold-600:#B8863B;--gold-400:#D3A662;
+  --stone-50:#EFEBE2;--stone-100:#E4DFD1;--stone-300:#D2CBB8;
+  --ink-900:#221F1C;--ink-600:#5B564C;--cream:#F6F2E7;
+  --ok:#4C7A5E;--warn:#A25B3A;--radius:7px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{font-family:'IBM Plex Sans',sans-serif;background:var(--stone-50);color:var(--ink-900);line-height:1.55;}
+h1,h2,h3{font-family:'Newsreader',serif;font-weight:600;margin:0 0 .4em 0;letter-spacing:-0.01em;}
+p{margin:0 0 1em 0;}
+button{font-family:inherit;cursor:pointer;}
+
+#app{min-height:100vh;display:flex;flex-direction:column;}
+.hero{background:linear-gradient(155deg,var(--teal-900) 0%,var(--teal-700) 100%);color:var(--cream);padding:64px 24px 56px;position:relative;}
+.hero-inner{max-width:760px;margin:0 auto;}
+.hero-kicker{font-size:.95rem;color:var(--gold-400);margin-bottom:14px;font-family:'Newsreader',serif;font-style:italic;}
+.hero h1{font-size:2.5rem;line-height:1.12;color:#fff;max-width:16ch;}
+.hero p.lead{font-size:1.08rem;color:#DCE6DF;max-width:56ch;margin-top:14px;}
+.hero-modules{display:flex;gap:22px;margin-top:34px;flex-wrap:wrap;}
+.hero-module{max-width:190px;}
+.hero-module .n{font-family:'Newsreader',serif;font-style:italic;color:var(--gold-400);font-size:1.2rem;}
+.hero-module .t{font-weight:600;color:#fff;margin:2px 0;}
+.hero-module .d{font-size:.85rem;color:#C7D2C9;}
+.start-btn{margin-top:36px;background:var(--gold-600);color:var(--teal-900);border:none;font-weight:600;font-size:1rem;padding:14px 26px;border-radius:var(--radius);transition:background .15s ease;}
+.start-btn:hover{background:var(--gold-400);}
+
+.wizard{max-width:720px;margin:0 auto;width:100%;padding:38px 24px 80px;flex:1;}
+.steps{display:flex;gap:0;margin-bottom:34px;border-bottom:1px solid var(--stone-300);}
+.step{flex:1;text-align:left;padding:0 0 12px;font-size:.86rem;color:var(--ink-600);border-bottom:2px solid transparent;position:relative;}
+.step .num{display:inline-block;width:20px;height:20px;border-radius:50%;border:1px solid var(--stone-300);text-align:center;line-height:18px;font-size:.72rem;margin-right:6px;color:var(--ink-600);}
+.step.active{color:var(--teal-900);font-weight:600;border-bottom-color:var(--gold-600);}
+.step.active .num{background:var(--teal-700);border-color:var(--teal-700);color:#fff;}
+.step.done .num{background:var(--teal-500);border-color:var(--teal-500);color:#fff;}
+
+.module-head{margin-bottom:26px;}
+.module-head .eyebrow{color:var(--gold-600);font-family:'Newsreader',serif;font-style:italic;font-size:1rem;margin-bottom:2px;}
+
+.item{background:#fff;border:1px solid var(--stone-300);border-radius:var(--radius);padding:18px 20px;margin-bottom:14px;}
+.item p.prompt{font-size:.98rem;margin-bottom:14px;color:var(--ink-900);}
+.scale{display:flex;justify-content:space-between;align-items:center;gap:6px;}
+.scale-label{font-size:.72rem;color:var(--ink-600);max-width:80px;}
+.scale-label.right{text-align:right;}
+.dots{display:flex;gap:10px;}
+.dot{width:34px;height:34px;border-radius:50%;border:1px solid var(--stone-300);background:#fff;font-size:.8rem;color:var(--ink-600);display:flex;align-items:center;justify-content:center;transition:all .12s ease;}
+.dot:hover{border-color:var(--teal-500);}
+.dot.sel{background:var(--teal-700);border-color:var(--teal-700);color:#fff;font-weight:600;}
+
+.choice-q{margin-bottom:26px;}
+.choice-q .qtitle{font-weight:600;margin-bottom:10px;font-size:.98rem;}
+.choice-opts{display:flex;flex-wrap:wrap;gap:10px;}
+.choice-opt{border:1px solid var(--stone-300);background:#fff;padding:10px 16px;border-radius:var(--radius);font-size:.9rem;color:var(--ink-900);}
+.choice-opt.sel{background:var(--teal-700);border-color:var(--teal-700);color:#fff;}
+
+.nav-row{display:flex;justify-content:space-between;align-items:center;margin-top:30px;}
+.btn{border:1px solid var(--teal-700);background:var(--teal-700);color:#fff;padding:12px 22px;border-radius:var(--radius);font-weight:600;font-size:.92rem;}
+.btn.ghost{background:transparent;color:var(--teal-700);}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+
+/* ---------- Barra de progreso ---------- */
+.progress{margin:-14px 0 30px;}
+.progress-meta{display:flex;justify-content:space-between;font-size:.8rem;color:var(--ink-600);margin-bottom:6px;}
+.progress-track{background:var(--stone-100);border-radius:6px;height:10px;overflow:hidden;}
+.progress-fill{height:100%;width:0;background:linear-gradient(90deg,var(--teal-500),var(--gold-600));border-radius:6px;transition:width .4s ease;}
+.progress-fill.full{background:var(--ok);}
+
+/* ---------- Una pregunta por tarjeta ---------- */
+.q-count{font-family:'Newsreader',serif;font-style:italic;color:var(--gold-600);margin-bottom:10px;}
+.q-card{padding:36px 30px;box-shadow:0 6px 22px rgba(21,48,43,.08);animation:cardIn .35s ease;}
+.q-card p.prompt{font-family:'Newsreader',serif;font-size:1.35rem;line-height:1.35;margin-bottom:30px;}
+.q-card .dot{width:46px;height:46px;font-size:.95rem;}
+.q-card .choice-opts{flex-direction:column;}
+.q-card .choice-opt{text-align:left;padding:14px 18px;}
+.q-card .choice-opt:hover{border-color:var(--teal-500);}
+@keyframes cardIn{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:none;}}
+@media(max-width:520px){.q-card{padding:26px 18px;}.q-card .dot{width:38px;height:38px;}.dots{gap:6px;}}
+
+/* ---------- Results ---------- */
+.results{max-width:880px;margin:0 auto;width:100%;padding:38px 24px 90px;}
+.results h2.code{font-size:1.9rem;color:var(--teal-900);}
+.results .subcode{color:var(--gold-600);font-family:'Newsreader',serif;font-style:italic;}
+.grid2{display:grid;grid-template-columns:1.1fr 1fr;gap:26px;margin:28px 0;}
+@media(max-width:760px){.grid2{grid-template-columns:1fr;}}
+.panel{background:#fff;border:1px solid var(--stone-300);border-radius:var(--radius);padding:22px 24px;}
+.panel h3{font-size:1.05rem;margin-bottom:12px;}
+.bar-row{margin-bottom:12px;}
+.bar-row .lbl{display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:5px;}
+.bar-track{background:var(--stone-100);border-radius:5px;height:9px;overflow:hidden;}
+.bar-fill{background:var(--teal-500);height:100%;border-radius:5px;}
+.bar-fill.gold{background:var(--gold-600);}
+.tag{display:inline-block;font-size:.75rem;background:var(--stone-100);color:var(--ink-600);padding:3px 10px;border-radius:20px;margin:2px 6px 2px 0;}
+.career-card{border:1px solid var(--stone-300);border-radius:var(--radius);padding:20px 22px;background:#fff;margin-bottom:16px;}
+.career-card h3{color:var(--teal-900);}
+.career-card .field{margin-top:10px;}
+.career-card .field .k{font-weight:600;font-size:.82rem;color:var(--ink-600);margin-bottom:2px;}
+.career-card .field .v{font-size:.92rem;}
+.notice{background:var(--stone-100);border-left:3px solid var(--gold-600);padding:14px 18px;border-radius:0 var(--radius) var(--radius) 0;font-size:.86rem;color:var(--ink-600);margin-top:26px;}
+.restart-row{margin-top:30px;display:flex;gap:12px;flex-wrap:wrap;}
+.strength-list{list-style:none;padding:0;margin:0;}
+.strength-list li{padding:7px 0;border-bottom:1px solid var(--stone-100);font-size:.9rem;display:flex;justify-content:space-between;}
+.strength-list li:last-child{border-bottom:none;}
+.dev{color:var(--warn);}
+.str{color:var(--ok);}
+canvas{max-width:100%;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+/* =========================================================================
+   BASE DE DATOS DE CARRERAS / OFERTA EDUCATIVA — EDITABLE
+   ========================================================================= */
+const MATCH_DB = {
+  AC:{area:"Diseño y gestión de contenidos",carreras:"Diseño Gráfico, Comunicación con mención en Marketing Digital, Gestión de la Información",instituciones:"UDLA, PUCE, UEES (modalidad presencial y en línea)",mercado:"Demanda creciente en economía digital, marketing de contenidos y comunicación de marca."},
+  AE:{area:"Comunicación, publicidad y medios",carreras:"Comunicación Social, Publicidad y Marketing, Cine y Producción Audiovisual",instituciones:"USFQ, UDLA, PUCE, UTPL (en línea)",mercado:"Industrias creativas y digitales en expansión, sobre todo en Quito y Guayaquil."},
+  AI:{area:"Diseño e innovación aplicada",carreras:"Arquitectura, Diseño Industrial, Diseño de Producto, Artes Digitales",instituciones:"USFQ, PUCE, Universidad de Cuenca, ESPOL",mercado:"Vinculado a construcción, industria manufacturera e innovación tecnológica."},
+  AR:{area:"Artes aplicadas y oficios creativos",carreras:"Diseño de Modas, Gastronomía, Artesanías y Diseño, Artes Escénicas",instituciones:"Universidad de Cuenca, UDLA e institutos técnicos superiores",mercado:"Ligado a turismo, patrimonio cultural e industrias creativas locales."},
+  AS:{area:"Educación artística y desarrollo humano",carreras:"Pedagogía de las Artes y Humanidades, Educación Musical, Psicología",instituciones:"UNL, Universidad Central del Ecuador, PUCE",mercado:"Educación básica/media y programas de bienestar comunitario."},
+  CE:{area:"Administración y finanzas",carreras:"Contabilidad y Auditoría, Finanzas, Administración de Empresas, Economía",instituciones:"UNL, ESPOL, Universidad Central, UTPL",mercado:"Sector financiero, servicios y comercio exterior; demanda sostenida a nivel nacional."},
+  CI:{area:"Análisis de datos y ciencias cuantitativas",carreras:"Estadística, Economía, Ingeniería en Sistemas, Actuaría",instituciones:"ESPOL, EPN, Universidad de Cuenca",mercado:"Alta demanda en analítica de datos, fintech y transformación digital."},
+  CR:{area:"Gestión técnica y logística",carreras:"Ingeniería Industrial, Logística y Transporte, Agronegocios",instituciones:"ESPOL, ESPE, Universidad Técnica de Ambato",mercado:"Sector logístico, agroindustrial y manufacturero, priorizados en la matriz productiva."},
+  CS:{area:"Gestión social y administrativa",carreras:"Trabajo Social, Administración Pública, Educación, Enfermería",instituciones:"UNL, Universidad Central, Universidad de Cuenca",mercado:"Sector público y servicios sociales; demanda estable en salud y educación."},
+  EI:{area:"Innovación y emprendimiento tecnológico",carreras:"Ingeniería en Software, Ingeniería en Negocios, Biotecnología",instituciones:"ESPOL, EPN, USFQ, Yachay Tech",mercado:"Ecosistema de startups tecnológicas y transformación digital en crecimiento."},
+  ER:{area:"Gestión de operaciones y negocios técnicos",carreras:"Ingeniería Industrial, Ingeniería Comercial, Agronegocios",instituciones:"ESPOL, ESPE, UTPL",mercado:"Sectores manufacturero, agroindustrial y de construcción."},
+  ES:{area:"Liderazgo organizacional y ventas",carreras:"Marketing, Administración de Empresas, Relaciones Públicas, Gestión del Talento Humano",instituciones:"UDLA, PUCE, Universidad Central",mercado:"Comercio y sector corporativo; demanda constante de perfiles comerciales."},
+  IR:{area:"Ingeniería y ciencias aplicadas",carreras:"Ingeniería Civil, Ingeniería Mecánica, Ingeniería Eléctrica, Geología",instituciones:"EPN, ESPOL, Universidad de Cuenca",mercado:"Construcción, energía e infraestructura; sectores priorizados a nivel nacional."},
+  IS:{area:"Ciencias de la salud e investigación",carreras:"Medicina, Psicología, Bioquímica y Farmacia, Enfermería",instituciones:"PUCE, Universidad Central, Universidad de Cuenca, UTE",mercado:"Sector salud con demanda sostenida en todo el país."},
+  RS:{area:"Ciencias agropecuarias y desarrollo rural",carreras:"Agronomía, Medicina Veterinaria, Ingeniería Ambiental",instituciones:"UNL, Universidad Técnica de Ambato, ESPOCH",mercado:"Sector agroindustrial y ambiental, especialmente relevante en la región sur del país."}
+};
+
+const RIASEC_LABELS = {R:"Realista",I:"Investigador",A:"Artístico",S:"Social",E:"Emprendedor",C:"Convencional"};
+
+/* =========================================================================
+   BANCO DE ÍTEMS
+   ========================================================================= */
+const RIASEC_ITEMS = [
+  ["R","Disfruto reparar o armar objetos y equipos con mis manos."],
+  ["R","Prefiero actividades al aire libre o en talleres antes que en oficinas."],
+  ["R","Me interesa entender cómo funcionan las máquinas o instalaciones."],
+  ["R","Me gustaría trabajar con herramientas, materiales o tecnología aplicada."],
+  ["R","Disfruto las actividades físicas o técnicas más que las teóricas."],
+  ["I","Me gusta investigar por qué ocurren los fenómenos que observo."],
+  ["I","Disfruto resolver problemas complejos con datos o experimentos."],
+  ["I","Prefiero analizar información antes de tomar una decisión."],
+  ["I","Me interesa leer sobre ciencia, tecnología o descubrimientos."],
+  ["I","Disfruto formular preguntas y buscar evidencia para responderlas."],
+  ["A","Me gusta expresar ideas a través del arte, la escritura o el diseño."],
+  ["A","Disfruto actividades donde puedo crear algo original."],
+  ["A","Prefiero entornos flexibles donde pueda experimentar formas nuevas."],
+  ["A","Me interesa la música, el diseño, la literatura o las artes visuales."],
+  ["A","Disfruto imaginar soluciones poco convencionales a los problemas."],
+  ["S","Me gusta ayudar a otras personas a resolver sus problemas."],
+  ["S","Disfruto enseñar, orientar o guiar a otras personas."],
+  ["S","Prefiero trabajar en equipo y en contacto directo con las personas."],
+  ["S","Me interesa el bienestar y desarrollo de quienes me rodean."],
+  ["S","Disfruto escuchar y comprender las necesidades de otros."],
+  ["E","Me gusta liderar proyectos y tomar decisiones."],
+  ["E","Disfruto persuadir a otras personas para lograr un objetivo."],
+  ["E","Prefiero asumir riesgos frente a oportunidades de negocio."],
+  ["E","Me interesa iniciar y gestionar mis propios proyectos o emprendimientos."],
+  ["E","Disfruto negociar y competir por resultados."],
+  ["C","Me gusta organizar información, archivos o procesos de forma sistemática."],
+  ["C","Disfruto seguir procedimientos claros y bien definidos."],
+  ["C","Prefiero tareas que requieren orden, precisión y atención al detalle."],
+  ["C","Me interesa trabajar con números, registros o bases de datos."],
+  ["C","Disfruto planificar y controlar el cumplimiento de tareas."]
+];
+
+const EMP_ITEMS = [
+  ["Comunicación efectiva","Puedo expresar mis ideas con claridad de forma oral y escrita."],
+  ["Comunicación efectiva","Me siento cómodo/a presentando información ante otras personas."],
+  ["Trabajo en equipo","Colaboro con facilidad en proyectos grupales con objetivos comunes."],
+  ["Trabajo en equipo","Sé integrar distintos puntos de vista para llegar a acuerdos."],
+  ["Resolución de problemas","Identifico con facilidad la causa de un problema antes de actuar."],
+  ["Resolución de problemas","Propongo soluciones prácticas ante situaciones inesperadas."],
+  ["Adaptabilidad","Me adapto con facilidad a cambios en el entorno de trabajo o estudio."],
+  ["Adaptabilidad","Aprendo rápido nuevas herramientas o formas de trabajar."],
+  ["Pensamiento crítico","Analizo la información antes de aceptarla como válida."],
+  ["Pensamiento crítico","Cuestiono supuestos y busco evidencia para mis conclusiones."],
+  ["Gestión del tiempo","Cumplo mis plazos y organizo mis actividades de forma eficiente."],
+  ["Gestión del tiempo","Priorizo mis tareas según su importancia y urgencia."],
+  ["Alfabetización digital","Manejo con soltura herramientas digitales u ofimáticas."],
+  ["Alfabetización digital","Aprendo con facilidad nuevas plataformas o software."],
+  ["Idiomas e interculturalidad","Puedo comunicarme en un segundo idioma en contextos básicos o profesionales."],
+  ["Idiomas e interculturalidad","Me siento cómodo/a interactuando con personas de otras culturas."]
+];
+
+const CONTEXT_QUESTIONS = [
+  {key:"situacion",q:"¿Cuál describe mejor tu situación actual?",opts:["Estudiante de bachillerato","Estudiante universitario","Recién graduado/a","Profesional en ejercicio buscando reorientación"]},
+  {key:"area",q:"¿Qué ámbito general te llama más la atención hoy?",opts:["Ciencias e Ingeniería","Ciencias Sociales y Administrativas","Salud","Artes y Humanidades","Educación","Aún no lo sé"]},
+  {key:"nivel",q:"¿Qué nivel educativo planeas alcanzar?",opts:["Técnico/Tecnológico superior","Tercer nivel (grado)","Cuarto nivel (maestría)","Doctorado (PhD)"]},
+  {key:"sector",q:"¿En qué sector te imaginas trabajando?",opts:["Público","Privado","Emprendimiento propio","Aún no lo sé"]},
+  {key:"modalidad",q:"¿Qué modalidad de trabajo prefieres?",opts:["Presencial","Remoto","Híbrido","Sin preferencia"]},
+  {key:"movilidad",q:"¿Qué tan dispuesto/a estás a moverte por trabajo o estudio?",opts:["Solo en mi ciudad","Dentro de Ecuador","Al exterior","Aún no lo sé"]}
+];
+
+/* =========================================================================
+   ESTADO
+   ========================================================================= */
+const state = {
+  screen:"intro", // intro | m1 | m2 | m3 | results
+  riasec: new Array(RIASEC_ITEMS.length).fill(3),
+  emp: new Array(EMP_ITEMS.length).fill(3),
+  context: {}
+};
+
+/* Estado solo de interfaz: pregunta actual y preguntas respondidas */
+const UI = {
+  qi:{m1:0,m2:0,m3:0},
+  done:{
+    m1:new Array(RIASEC_ITEMS.length).fill(false),
+    m2:new Array(EMP_ITEMS.length).fill(false),
+    m3:new Array(CONTEXT_QUESTIONS.length).fill(false)
+  }
+};
+const PREV_LAST = {m2:RIASEC_ITEMS.length-1, m3:EMP_ITEMS.length-1};
+
+const el = document.getElementById("app");
+let radarChart = null;
+
+function go(screen){ state.screen = screen; window.scrollTo({top:0,behavior:"smooth"}); render(); }
+
+/* ---------- Cálculo de resultados ---------- */
+function computeRiasec(){
+  const sums = {R:0,I:0,A:0,S:0,E:0,C:0};
+  RIASEC_ITEMS.forEach((item,i)=>{ sums[item[0]] += state.riasec[i]; });
+  const scores = {};
+  Object.keys(sums).forEach(k=>{
+    scores[k] = Math.round(((sums[k]-5)/(25-5))*100);
+  });
+  return scores;
+}
+function computeEmp(){
+  const groups = {};
+  EMP_ITEMS.forEach((item,i)=>{
+    if(!groups[item[0]]) groups[item[0]] = [];
+    groups[item[0]].push(state.emp[i]);
+  });
+  const scores = {};
+  Object.keys(groups).forEach(k=>{
+    const vals = groups[k];
+    const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
+    scores[k] = Math.round(((avg-1)/4)*100);
+  });
+  return scores;
+}
+function topPair(riasecScores){
+  const sorted = Object.entries(riasecScores).sort((a,b)=>b[1]-a[1]);
+  const letters = [sorted[0][0], sorted[1][0]].sort();
+  return {key:letters.join(""), top:sorted};
+}
+
+/* ---------- Render principal ---------- */
+function render(){
+  if(state.screen==="intro") return renderIntro();
+  if(state.screen==="m1") return renderLikertModule(1,"Intereses vocacionales","Basado en la teoría RIASEC de Holland: no hay respuestas correctas, responde según lo que realmente disfrutas.",RIASEC_ITEMS,state.riasec,"m2");
+  if(state.screen==="m2") return renderLikertModule(2,"Autoevaluación de empleabilidad","Sobre competencias que el mercado laboral valora, más allá del título académico.",EMP_ITEMS.map(i=>[i[0],i[1]]),state.emp,"m3");
+  if(state.screen==="m3") return renderContext();
+  if(state.screen==="results") return renderResults();
+}
+
+/* ---------- Progreso ---------- */
+function progressPct(active){
+  if(active===4) return 100;
+  const all=[...UI.done.m1,...UI.done.m2,...UI.done.m3];
+  return Math.round(all.filter(Boolean).length/all.length*100);
+}
+function updateProgress(){
+  const p=progressPct(), f=document.getElementById("progFill"), t=document.getElementById("progPct");
+  if(f) f.style.width=p+"%";
+  if(t) t.textContent=p+"%";
+}
+function stepsBar(active){
+  const labels = ["Intereses","Empleabilidad","Contexto laboral","Resultados"];
+  const p = progressPct(active);
+  return `<div class="steps">${labels.map((l,i)=>{
+    const n=i+1;
+    const cls = n===active ? "active" : (n<active ? "done":"");
+    return `<div class="step ${cls}"><span class="num">${n}</span>${l}</div>`;
+  }).join("")}</div>
+  <div class="progress">
+    <div class="progress-meta"><span>${active===4?"¡Test completado!":"Tu progreso"}</span><span id="progPct">${p}%</span></div>
+    <div class="progress-track"><div class="progress-fill ${p===100?'full':''}" id="progFill" style="width:${p}%"></div></div>
+  </div>`;
+}
+
+function renderIntro(){
+  el.innerHTML = `
+    <div class="hero">
+      <div class="hero-inner">
+        <div class="hero-kicker">Orientación vocacional y de empleabilidad</div>
+        <h1>Brújula: encuentra tu ruta entre lo que te gusta y lo que el mercado necesita</h1>
+        <p class="lead">Un instrumento de tres módulos que combina intereses vocacionales, competencias de empleabilidad y contexto del mercado laboral y la oferta de educación superior en Ecuador.</p>
+        <div class="hero-modules">
+          <div class="hero-module"><div class="n">I.</div><div class="t">Intereses</div><div class="d">30 ítems sobre lo que disfrutas hacer (modelo RIASEC).</div></div>
+          <div class="hero-module"><div class="n">II.</div><div class="t">Empleabilidad</div><div class="d">16 ítems sobre competencias transversales que piden los empleadores.</div></div>
+          <div class="hero-module"><div class="n">III.</div><div class="t">Contexto laboral</div><div class="d">Preferencias sobre sector, modalidad y movilidad.</div></div>
+        </div>
+        <button class="start-btn" id="startBtn">Comenzar el test — toma unos 10 minutos</button>
+      </div>
+    </div>
+    <div class="wizard" style="padding-top:36px;">
+      <div class="panel">
+        <h3>¿Qué vas a obtener al final?</h3>
+        <p style="font-size:.92rem;color:var(--ink-600);">Un perfil de intereses (código Holland), un mapa de tus competencias de empleabilidad con fortalezas y áreas a desarrollar, y una selección de áreas de carrera con ejemplos de instituciones de educación superior en Ecuador y su relación con el mercado laboral actual.</p>
+        <div class="notice">Este instrumento es orientativo: acompaña, no reemplaza, el acompañamiento de un/a orientador/a vocacional o consejero/a académico/a.</div>
+      </div>
+    </div>
+  `;
+  document.getElementById("startBtn").onclick = ()=>go("m1");
+}
+
+/* ---------- Módulos 1 y 2: una pregunta por tarjeta ---------- */
+function renderLikertModule(stepNum,title,subtitle,items,answers,nextScreen){
+  const key="m"+stepNum, i=UI.qi[key], total=items.length, done=UI.done[key];
+  const isLast = i===total-1;
+  el.innerHTML = `
+    <div class="wizard">
+      ${stepsBar(stepNum)}
+      <div class="module-head">
+        <div class="eyebrow">Módulo ${stepNum}</div>
+        <h2>${title}</h2>
+        <p style="color:var(--ink-600);font-size:.92rem;">${subtitle}</p>
+      </div>
+      <div class="q-count">Pregunta ${i+1} de ${total}</div>
+      <div class="item q-card">
+        <p class="prompt">${items[i][1]}</p>
+        <div class="scale">
+          <span class="scale-label">Muy en desacuerdo</span>
+          <div class="dots">
+            ${[1,2,3,4,5].map(v=>`<div class="dot ${done[i]&&answers[i]===v?'sel':''}" data-val="${v}">${v}</div>`).join("")}
+          </div>
+          <span class="scale-label right">Muy de acuerdo</span>
+        </div>
+      </div>
+      <div class="nav-row">
+        <button class="btn ghost" id="backBtn">${stepNum===1&&i===0?"Volver al inicio":"Atrás"}</button>
+        <button class="btn" id="nextBtn" ${done[i]?"":"disabled"}>${isLast?"Continuar al siguiente módulo":"Siguiente"}</button>
+      </div>
+    </div>
+  `;
+
+  const dots = el.querySelectorAll(".dot");
+  dots.forEach(dotEl=>{
+    dotEl.onclick = ()=>{
+      answers[i] = parseInt(dotEl.getAttribute("data-val"));
+      done[i] = true;
+      dots.forEach(d=>d.classList.remove("sel"));
+      dotEl.classList.add("sel");
+      document.getElementById("nextBtn").disabled = false;
+      updateProgress();
+    };
+  });
+
+  document.getElementById("backBtn").onclick = ()=>{
+    if(i>0){ UI.qi[key]--; render(); }
+    else if(stepNum===1){ go("intro"); }
+    else { UI.qi["m"+(stepNum-1)] = PREV_LAST[key]; go("m"+(stepNum-1)); }
+  };
+  document.getElementById("nextBtn").onclick = ()=>{
+    if(!isLast){ UI.qi[key]++; render(); } else { go(nextScreen); }
+  };
+}
+
+/* ---------- Módulo 3: una pregunta por tarjeta ---------- */
+function renderContext(){
+  const key="m3", i=UI.qi[key], total=CONTEXT_QUESTIONS.length, cq=CONTEXT_QUESTIONS[i];
+  const isLast = i===total-1;
+  el.innerHTML = `
+    <div class="wizard">
+      ${stepsBar(3)}
+      <div class="module-head">
+        <div class="eyebrow">Módulo 3</div>
+        <h2>Contexto y preferencias de mercado laboral</h2>
+        <p style="color:var(--ink-600);font-size:.92rem;">Esta información ayuda a ajustar las recomendaciones a tu realidad, no a limitar tus opciones.</p>
+      </div>
+      <div class="q-count">Pregunta ${i+1} de ${total}</div>
+      <div class="item q-card choice-q">
+        <p class="prompt">${cq.q}</p>
+        <div class="choice-opts">
+          ${cq.opts.map(opt=>`<div class="choice-opt ${state.context[cq.key]===opt?'sel':''}" data-opt="${opt}">${opt}</div>`).join("")}
+        </div>
+      </div>
+      <div class="nav-row">
+        <button class="btn ghost" id="backBtn">Atrás</button>
+        <button class="btn" id="nextBtn" ${UI.done[key][i]?"":"disabled"}>${isLast?"Ver mis resultados":"Siguiente"}</button>
+      </div>
+    </div>
+  `;
+
+  const opts = el.querySelectorAll(".choice-opt");
+  opts.forEach(optEl=>{
+    optEl.onclick = ()=>{
+      state.context[cq.key] = optEl.getAttribute("data-opt");
+      UI.done[key][i] = true;
+      opts.forEach(o=>o.classList.remove("sel"));
+      optEl.classList.add("sel");
+      document.getElementById("nextBtn").disabled = false;
+      updateProgress();
+    };
+  });
+
+  document.getElementById("backBtn").onclick = ()=>{
+    if(i>0){ UI.qi[key]--; render(); }
+    else { UI.qi.m2 = PREV_LAST.m3; go("m2"); }
+  };
+  document.getElementById("nextBtn").onclick = ()=>{
+    if(!isLast){ UI.qi[key]++; render(); } else { go("results"); }
+  };
+}
+
+function renderResults(){
+  const riasecScores = computeRiasec();
+  const empScores = computeEmp();
+  const {key,top} = topPair(riasecScores);
+  const match = MATCH_DB[key] || MATCH_DB["IC"];
+  const topCodeLabel = top.slice(0,3).map(t=>RIASEC_LABELS[t[0]]).join(" · ");
+
+  const empSorted = Object.entries(empScores).sort((a,b)=>b[1]-a[1]);
+  const strengths = empSorted.slice(0,2);
+  const growth = empSorted.slice(-2);
+  const empAvg = Math.round(Object.values(empScores).reduce((a,b)=>a+b,0)/Object.values(empScores).length);
+
+  el.innerHTML = `
+    <div class="wizard" style="padding-bottom:0;">
+      ${stepsBar(4)}
+    </div>
+    <div class="results">
+      <div class="eyebrow" style="color:var(--gold-600);font-family:'Newsreader',serif;font-style:italic;">Tu perfil</div>
+      <h2 class="code">${key} — ${match.area}</h2>
+      <p class="subcode">Código Holland dominante: ${top[0][0]}${top[1][0]} (${topCodeLabel})</p>
+
+      <div class="grid2">
+        <div class="panel">
+          <h3>Perfil de intereses (RIASEC)</h3>
+          <canvas id="riasecChart" height="240"></canvas>
+        </div>
+        <div class="panel">
+          <h3>Competencias de empleabilidad</h3>
+          <p style="font-size:.85rem;color:var(--ink-600);margin-bottom:14px;">Promedio general: <strong>${empAvg}/100</strong></p>
+          ${empSorted.map(([k,v])=>`
+            <div class="bar-row">
+              <div class="lbl"><span>${k}</span><span>${v}</span></div>
+              <div class="bar-track"><div class="bar-fill ${v>=70?'gold':''}" style="width:${v}%;"></div></div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="panel">
+          <h3>Fortalezas y áreas a desarrollar</h3>
+          <ul class="strength-list">
+            ${strengths.map(([k,v])=>`<li><span class="str">↑ ${k}</span><span>${v}</span></li>`).join("")}
+            ${growth.map(([k,v])=>`<li><span class="dev">↓ ${k}</span><span>${v}</span></li>`).join("")}
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Tu contexto declarado</h3>
+          ${Object.entries(state.context).map(([k,v])=>`<span class="tag">${v}</span>`).join(" ")}
+          <p style="margin-top:12px;font-size:.85rem;color:var(--ink-600);">Estas preferencias se contrastan con la nota de mercado de tu área recomendada, a la derecha.</p>
+        </div>
+      </div>
+
+      <div class="career-card">
+        <h3>Área de carrera recomendada: ${match.area}</h3>
+        <div class="field"><div class="k">Carreras afines</div><div class="v">${match.carreras}</div></div>
+        <div class="field"><div class="k">Ejemplos de instituciones en Ecuador</div><div class="v">${match.instituciones}</div></div>
+        <div class="field"><div class="k">Panorama de mercado laboral</div><div class="v">${match.mercado}</div></div>
+      </div>
+
+      <div class="notice">
+        Las carreras, instituciones y notas de mercado son orientativas y con fines de entrenamiento del instrumento. Para una versión institucional, se recomienda validar y actualizar periódicamente esta base con datos de SENESCYT, INEC, Banco Central del Ecuador y el Ministerio del Trabajo, e idealmente vincularla con un módulo de seguimiento a graduados.
+      </div>
+
+      <div class="restart-row">
+        <button class="btn ghost" id="restartBtn">Repetir el test</button>
+        <button class="btn" id="printBtn">Guardar / imprimir resultados</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("restartBtn").onclick = ()=>{
+    state.riasec = new Array(RIASEC_ITEMS.length).fill(3);
+    state.emp = new Array(EMP_ITEMS.length).fill(3);
+    state.context = {};
+    UI.qi = {m1:0,m2:0,m3:0};
+    UI.done.m1.fill(false); UI.done.m2.fill(false); UI.done.m3.fill(false);
+    go("intro");
+  };
+  document.getElementById("printBtn").onclick = ()=> window.print();
+
+  const ctx = document.getElementById("riasecChart").getContext("2d");
+  if(radarChart) radarChart.destroy();
+  radarChart = new Chart(ctx,{
+    type:"radar",
+    data:{
+      labels:Object.keys(riasecScores).map(k=>RIASEC_LABELS[k]),
+      datasets:[{
+        label:"Puntaje",
+        data:Object.keys(riasecScores).map(k=>riasecScores[k]),
+        backgroundColor:"rgba(30,74,65,0.18)",
+        borderColor:"#1E4A41",
+        pointBackgroundColor:"#B8863B",
+        pointBorderColor:"#B8863B",
+        borderWidth:2
+      }]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{display:false}},
+      scales:{
+        r:{
+          min:0,max:100,
+          ticks:{display:false},
+          grid:{color:"#D2CBB8"},
+          angleLines:{color:"#D2CBB8"},
+          pointLabels:{font:{family:"IBM Plex Sans",size:11},color:"#221F1C"}
+        }
+      }
+    }
+  });
+}
+
+render();
+</script>
+</body>
+</html>

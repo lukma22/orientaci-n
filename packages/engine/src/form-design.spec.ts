@@ -1,0 +1,341 @@
+import { describe, expect, it } from 'vitest';
+import {
+  DEFAULT_FORM_FONT,
+  FORM_FONTS,
+  FORM_THEME_PRESETS,
+  LEGACY_FORM_DESIGN,
+  designAttributes,
+  findThemePreset,
+  resolveCustomFont,
+  resolveDesign,
+  withNewFormBranding,
+} from './form-design';
+
+describe('resolveDesign — legacy defaults', () => {
+  // The whole additive-config promise rests on this: a form saved before the
+  // design system existed must resolve to exactly the old look.
+  it('resolves an absent branding to the legacy design', () => {
+    expect(resolveDesign(undefined)).toEqual(LEGACY_FORM_DESIGN);
+    expect(resolveDesign(null)).toEqual(LEGACY_FORM_DESIGN);
+    expect(resolveDesign({})).toEqual(LEGACY_FORM_DESIGN);
+  });
+
+  it('uses Figtree as the default face', () => {
+    expect(resolveDesign({}).font).toBe('figtree');
+    expect(DEFAULT_FORM_FONT).toBe('figtree');
+  });
+
+  // Every curated face is baked into the build by `next/font` and therefore into
+  // this repository, so the list may only ever hold freely-redistributable faces.
+  // This asserts the rule the same way a reader would check it: by name.
+  it('curates no commercially-licensed face', () => {
+    expect(FORM_FONTS).not.toContain('visby');
+  });
+
+  it('still accepts Poppins, the previous default, from a stored config', () => {
+    // Dropping a retired face from the union would fail an already-published
+    // form's config at parse time (invariant #4).
+    expect(resolveDesign({ fontFamily: 'poppins' }).font).toBe('poppins');
+  });
+
+  it('keeps soft corners as the default', () => {
+    // `sharp` was tried as the default to match the marketing site and reverted:
+    // hard corners read as harsh at form density. It stays an author choice.
+    expect(resolveDesign({}).radius).toBe('soft');
+  });
+
+  it('leaves untouched axes at their legacy value when one axis is set', () => {
+    const d = resolveDesign({ radius: 'round' });
+    expect(d.radius).toBe('round');
+    expect(d.buttonStyle).toBe(LEGACY_FORM_DESIGN.buttonStyle);
+    expect(d.progressStyle).toBe(LEGACY_FORM_DESIGN.progressStyle);
+    expect(d.transition).toBe(LEGACY_FORM_DESIGN.transition);
+  });
+});
+
+describe('resolveDesign — explicit axes', () => {
+  it('passes every axis through', () => {
+    const d = resolveDesign({
+      radius: 'sharp',
+      buttonStyle: 'outline',
+      buttonFullWidth: false,
+      progressStyle: 'dots',
+      logoSize: 'lg',
+      logoPosition: 'left',
+      badgeSize: 'sm',
+      contentAlign: 'left',
+      contentWidth: 'wide',
+      transition: 'fade',
+    });
+    expect(d).toMatchObject({
+      radius: 'sharp',
+      buttonStyle: 'outline',
+      buttonFullWidth: false,
+      progressStyle: 'dots',
+      logoSize: 'lg',
+      logoPosition: 'left',
+      badgeSize: 'sm',
+      contentAlign: 'left',
+      contentWidth: 'wide',
+      transition: 'fade',
+    });
+  });
+
+  it('defaults the alignment to centre, matching the pre-design renderer', () => {
+    // `.pf__question` has always been `text-align: center`. If this ever flips,
+    // every published form silently re-aligns.
+    expect(resolveDesign({}).contentAlign).toBe('center');
+    expect(designAttributes(resolveDesign({}))['data-pf-align']).toBe('center');
+  });
+
+  it('defaults the attribution badge to the size it has always rendered at', () => {
+    // A form published before this axis existed carries no `badgeSize`, and must
+    // keep the exact pill it had. `sm` is opt-in, never inherited.
+    expect(resolveDesign({}).badgeSize).toBe('md');
+    expect(designAttributes(resolveDesign({}))['data-pf-badge-size']).toBe('md');
+    expect(designAttributes(resolveDesign({ badgeSize: 'sm' }))['data-pf-badge-size']).toBe('sm');
+  });
+
+  it('honours an explicit false for buttonFullWidth', () => {
+    // `?? ` not `||` — `false` is a real choice, not an absent value.
+    expect(resolveDesign({ buttonFullWidth: false }).buttonFullWidth).toBe(false);
+    expect(resolveDesign({}).buttonFullWidth).toBe(true);
+  });
+
+  it('progressStyle "none" survives resolution', () => {
+    expect(resolveDesign({ progressStyle: 'none' }).progressStyle).toBe('none');
+  });
+});
+
+describe('resolveDesign — background image cross-validation', () => {
+  it('keeps the image when style and url are both present', () => {
+    const d = resolveDesign({ backgroundStyle: 'image', backgroundImage: 'https://x.test/a.jpg' });
+    expect(d.backgroundStyle).toBe('image');
+    expect(d.backgroundImage).toBe('https://x.test/a.jpg');
+  });
+
+  it('falls back to solid when image style has no url', () => {
+    // An empty image layer would paint the page a flat nothing.
+    expect(resolveDesign({ backgroundStyle: 'image' }).backgroundStyle).toBe('solid');
+    expect(resolveDesign({ backgroundStyle: 'image', backgroundImage: '   ' }).backgroundStyle).toBe('solid');
+  });
+
+  it('ignores a stored image when the style is not image', () => {
+    const d = resolveDesign({ backgroundStyle: 'gradient', backgroundImage: 'https://x.test/a.jpg' });
+    expect(d.backgroundStyle).toBe('gradient');
+    expect(d.backgroundImage).toBeNull();
+  });
+
+  it('clamps the overlay to 0–100 and rounds it', () => {
+    expect(resolveDesign({ backgroundOverlay: -20 }).backgroundOverlay).toBe(0);
+    expect(resolveDesign({ backgroundOverlay: 180 }).backgroundOverlay).toBe(100);
+    expect(resolveDesign({ backgroundOverlay: 42.6 }).backgroundOverlay).toBe(43);
+    expect(resolveDesign({ backgroundOverlay: Number.NaN }).backgroundOverlay).toBe(
+      LEGACY_FORM_DESIGN.backgroundOverlay,
+    );
+  });
+});
+
+describe('resolveCustomFont / custom face fallback', () => {
+  it('needs both a name and a url', () => {
+    expect(resolveCustomFont({ name: 'Untitled Sans', url: 'https://x.test/f.woff2' })).toEqual({
+      name: 'Untitled Sans',
+      url: 'https://x.test/f.woff2',
+    });
+    expect(resolveCustomFont({ name: 'Untitled Sans', url: '' })).toBeNull();
+    expect(resolveCustomFont({ name: '', url: 'https://x.test/f.woff2' })).toBeNull();
+    expect(resolveCustomFont(null)).toBeNull();
+  });
+
+  it('trims both halves', () => {
+    expect(resolveCustomFont({ name: '  Soehne  ', url: '  https://x.test/f.woff2 ' })).toEqual({
+      name: 'Soehne',
+      url: 'https://x.test/f.woff2',
+    });
+  });
+
+  it('falls back to the default face when custom is chosen but incomplete', () => {
+    // An @font-face with no src silently never resolves — better to render the
+    // brand face than nothing.
+    const d = resolveDesign({ fontFamily: 'custom', customFont: { name: 'X', url: '' } });
+    expect(d.font).toBe(DEFAULT_FORM_FONT);
+    expect(d.customFont).toBeNull();
+  });
+
+  it('keeps the custom face when it is complete', () => {
+    const d = resolveDesign({
+      fontFamily: 'custom',
+      customFont: { name: 'Soehne', url: 'https://x.test/f.woff2' },
+    });
+    expect(d.font).toBe('custom');
+    expect(d.customFont).toEqual({ name: 'Soehne', url: 'https://x.test/f.woff2' });
+  });
+
+  it('ignores a stored custom font when a curated face is selected', () => {
+    const d = resolveDesign({
+      fontFamily: 'inter',
+      customFont: { name: 'Soehne', url: 'https://x.test/f.woff2' },
+    });
+    expect(d.font).toBe('inter');
+    expect(d.customFont).toBeNull();
+  });
+});
+
+describe('designAttributes', () => {
+  it('emits one data attribute per axis', () => {
+    const attrs = designAttributes(resolveDesign({}));
+    expect(attrs).toEqual({
+      'data-pf-radius': 'soft',
+      'data-pf-button': 'solid',
+      'data-pf-button-width': 'full',
+      'data-pf-progress': 'bar',
+      'data-pf-bg': 'solid',
+      'data-pf-logo-size': 'md',
+      'data-pf-logo-pos': 'center',
+      'data-pf-badge-size': 'md',
+      'data-pf-align': 'center',
+      'data-pf-width': 'narrow',
+      'data-pf-transition': 'slide',
+    });
+  });
+
+  it('maps buttonFullWidth to a string enum, not a boolean attribute', () => {
+    // `data-x={false}` renders as the string "false" in React, which CSS would
+    // then match on — an explicit enum removes the ambiguity.
+    expect(designAttributes(resolveDesign({ buttonFullWidth: false }))['data-pf-button-width']).toBe('auto');
+  });
+});
+
+describe('theme presets', () => {
+  it('every preset has a unique id', () => {
+    const ids = FORM_THEME_PRESETS.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('every preset uses six-digit hex colors', () => {
+    for (const p of FORM_THEME_PRESETS) {
+      expect(p.background, p.id).toMatch(/^#[0-9a-f]{6}$/);
+      expect(p.foreground, p.id).toMatch(/^#[0-9a-f]{6}$/);
+      expect(p.primaryColor, p.id).toMatch(/^#[0-9a-f]{6}$/);
+    }
+  });
+
+  it('ships both dark and light starting points', () => {
+    // A picker that only offers dark grounds is not a picker.
+    const darks = FORM_THEME_PRESETS.filter((p) => p.background < '#800000');
+    expect(darks.length).toBeGreaterThan(0);
+    expect(darks.length).toBeLessThan(FORM_THEME_PRESETS.length);
+  });
+
+  it('dforms reproduces the house look and leads the list', () => {
+    // The first card is what a new form already looks like, so an author who
+    // wanders can get back to the default without hand-typing four values.
+    expect(FORM_THEME_PRESETS[0]?.id).toBe('dforms');
+    const house = findThemePreset('dforms');
+    expect(house?.background).toBe('#ffffff');
+    expect(house?.foreground).toBe('#1a1a1c');
+    expect(house?.primaryColor).toBe('#3ddc84');
+    expect(house?.font).toBe(DEFAULT_FORM_FONT);
+    expect(house?.radius).toBe(LEGACY_FORM_DESIGN.radius);
+  });
+
+  it('keeps control-room, the house look before the rebrand, under its original id', () => {
+    // A form that stored `themePreset: 'control-room'` must still show its card
+    // as selected: the id is data, not a label.
+    const previous = findThemePreset('control-room');
+    expect(previous?.background).toBe('#0a0c0e');
+    expect(previous?.foreground).toBe('#e8edf2');
+    expect(previous?.primaryColor).toBe('#d3e750');
+  });
+
+  it('keeps midnight, the previous house look, under its original id', () => {
+    // A form that stored `themePreset: 'midnight'` must still show its card as
+    // selected — the id is data, not a label.
+    const midnight = findThemePreset('midnight');
+    expect(midnight).not.toBeNull();
+    expect(midnight?.background).toBe('#222222');
+    expect(midnight?.primaryColor).toBe('#cbe84f');
+    expect(midnight?.font).toBe('poppins');
+  });
+
+  it('findThemePreset returns null for unknown or absent ids', () => {
+    expect(findThemePreset('nope')).toBeNull();
+    expect(findThemePreset(null)).toBeNull();
+    expect(findThemePreset(undefined)).toBeNull();
+  });
+});
+
+describe('withNewFormBranding', () => {
+  it('writes the dForms colours into a form made from nothing', () => {
+    const out = withNewFormBranding(undefined);
+    expect(out).toEqual({
+      version: 1,
+      steps: [],
+      branding: {
+        background: '#ffffff',
+        foreground: '#1a1a1c',
+        primaryColor: '#3ddc84',
+        themePreset: 'dforms',
+      },
+    });
+  });
+
+  it('keeps everything else on the config it is given', () => {
+    const out = withNewFormBranding({ version: 1, steps: [], language: 'es', layout: 'vertical' });
+    expect(out.language).toBe('es');
+    expect(out.layout).toBe('vertical');
+  });
+
+  it('does not mutate its input', () => {
+    const input = { version: 1, steps: [], branding: { radius: 'sharp' } };
+    withNewFormBranding(input);
+    expect(input).toEqual({ version: 1, steps: [], branding: { radius: 'sharp' } });
+  });
+
+  it('fills only what the caller left out', () => {
+    // A kit accent survives; the ground it did not name still becomes dForms.
+    const out = withNewFormBranding({ version: 1, steps: [], branding: { primaryColor: '#ff5500' } });
+    expect(out.branding).toEqual({
+      background: '#ffffff',
+      foreground: '#1a1a1c',
+      primaryColor: '#ff5500',
+    });
+  });
+
+  it('leaves the ground alone when the caller chose either half of it', () => {
+    // Foreground alone was written against the dark default; a white ground
+    // would put that text on white.
+    const fg = withNewFormBranding({ version: 1, steps: [], branding: { foreground: '#ffffff' } });
+    expect(fg.branding).toEqual({ foreground: '#ffffff', primaryColor: '#3ddc84' });
+    const bg = withNewFormBranding({ version: 1, steps: [], branding: { background: '#101010' } });
+    expect(bg.branding).toEqual({ background: '#101010', primaryColor: '#3ddc84' });
+  });
+
+  it('treats blank strings as absent', () => {
+    const out = withNewFormBranding({ version: 1, steps: [], branding: { background: ' ', primaryColor: '' } });
+    expect((out.branding as Record<string, unknown>).background).toBe('#ffffff');
+    expect((out.branding as Record<string, unknown>).primaryColor).toBe('#3ddc84');
+  });
+
+  it('marks the preset only when all three colours came from it', () => {
+    const custom = withNewFormBranding({
+      version: 1,
+      steps: [],
+      branding: { background: '#101010', foreground: '#eeeeee', primaryColor: '#ff5500' },
+    });
+    expect((custom.branding as Record<string, unknown>).themePreset).toBeUndefined();
+  });
+
+  it('is idempotent', () => {
+    const once = withNewFormBranding(undefined);
+    expect(withNewFormBranding(once)).toEqual(once);
+  });
+
+  it('lands on the dForms preset card, so the editor shows it selected', () => {
+    const branding = withNewFormBranding(undefined).branding as Record<string, string>;
+    const preset = findThemePreset('dforms');
+    expect(branding.background).toBe(preset?.background);
+    expect(branding.foreground).toBe(preset?.foreground);
+    expect(branding.primaryColor).toBe(preset?.primaryColor);
+  });
+});

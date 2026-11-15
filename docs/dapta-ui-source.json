@@ -1,0 +1,171 @@
+{
+  "repository": "https://github.com/Dapta-Tech/dapta-forms",
+  "commit": "82666d511a3f74248d75706b997ebd89e005ae71",
+  "files": [
+    {
+      "source": "apps/web/app/[accountCode]/[handle]/[slug]/form-renderer.tsx",
+      "included": "apps/web/dapta/form-renderer.tsx",
+      "sha256Original": "24dd430c00c6cd5c07a8658600ded4b09aaf3c7b65d02ff246d028b9c5089ae1"
+    },
+    {
+      "source": "apps/web/lib/form-design.ts",
+      "included": "apps/web/lib/form-design.ts",
+      "sha256Original": "1ebd4953e5742194924b028f4172c2d699c849b1f158db65720d52e51d590112"
+    },
+    {
+      "source": "apps/web/components/public/form-logo.tsx",
+      "included": "apps/web/components/public/form-logo.tsx",
+      "sha256Original": "5dab4e7ef35630d4c3bb427b492db25c6aa8fd85b7113948c31a3dc250b571f5"
+    },
+    {
+      "source": "apps/web/components/public/form-progress.tsx",
+      "included": "apps/web/components/public/form-progress.tsx",
+      "sha256Original": "2cf69878766b7182e635babf007583b875b2bbf8a74e72e755e9e55c661cbce6"
+    },
+    {
+      "source": "apps/web/components/public/client-logos-marquee.tsx",
+      "included": "apps/web/components/public/client-logos-marquee.tsx",
+      "sha256Original": "acaa4a99930bbaa08710c5c421ddfcdcf8d382b72cfeb30a3fa6ee818461ba9d"
+    },
+    {
+      "source": "apps/web/components/public/step-input.tsx",
+      "included": "apps/web/components/public/step-input.tsx",
+      "sha256Original": "fdc405a8dd7ace5606c8fe87cae588a35dcc8b904261ff88ea5d223f3c854da5"
+    },
+    {
+      "source": "apps/web/components/public/booking-screen.tsx",
+      "included": "apps/web/components/public/booking-screen.tsx",
+      "sha256Original": "00bcfa936d92ac3e79f50d5ed03703bb58f4687d52aa49f92da74cee4724993b"
+    },
+    {
+      "source": "apps/web/components/public/reveal-screen.tsx",
+      "included": "apps/web/components/public/reveal-screen.tsx",
+      "sha256Original": "27b28c3264b672a90ecfee06365ffa0f4755f0012c73d3c264bf8b49e6ea3e43"
+    },
+    {
+      "source": "apps/web/components/made-with-badge.tsx",
+      "included": "apps/web/components/made-with-badge.tsx",
+      "sha256Original": "581dd2caaab6d8a325ac7b0b52b14eba97439485e296b375b69cc55a3c060ff4"
+    },
+    {
+      "source": "apps/web/lib/booking-embed.ts",
+      "included": "apps/web/lib/booking-embed.ts",
+      "sha256Original": "79a2f21bcf463e3862919fe8561d116b9567356bc379763793e7ef119b78ac34"
+    },
+    {
+      "source": "apps/web/lib/calendly-preload.ts",
+      "included": "apps/web/lib/calendly-preload.ts",
+      "sha256Original": "ee63f8b706429915dffd30b4eabd309f0acc3f3b52bfe5569671c740b5dbf631"
+    },
+    {
+      "source": "apps/web/lib/booking-prefill.ts",
+      "included": "apps/web/lib/booking-prefill.ts",
+      "sha256Original": "724cbb418929a427eafbe62ca97d6a97a8931c34132cac67ea13bdc81b51d691"
+    },
+    {
+      "source": "apps/web/lib/call-action.ts",
+      "included": "apps/web/lib/call-action.ts",
+      "sha256Original": "2fe1f4d5552ccc741be992cadfa3510d0158528ab918b98bd5e84c5012f29d62"
+    },
+    {
+      "source": "apps/web/lib/top-navigate.ts",
+      "included": "apps/web/lib/top-navigate.ts",
+      "sha256Original": "205ac64116d8f9aa0244183b5d705f9b0e2bbc8dbf76b879b98ee7b7e1d353f8"
+    },
+    {
+      "source": "apps/web/lib/lead-conversion.ts",
+      "included": "apps/web/lib/lead-conversion.ts",
+      "sha256Original": "0bd1ebab7b4d845029734b0d2d8b7c768d22e63ed655e862a90405d8f261c36c"
+    },
+    {
+      "source": "apps/web/lib/embed-screen.ts",
+      "included": "apps/web/lib/embed-screen.ts",
+      "sha256Original": "520afc9beefa9850d011ed24773917fe79ad4319c7ca6986881a1bf59d523fad"
+    },
+    {
+      "source": "apps/web/lib/host-visit.ts",
+      "included": "apps/web/lib/host-visit.ts",
+      "sha256Original": "a2f8d4d2cb38acc4146e0a218b32261bed51ef59ac77171d6f0d3e6b65ab67ed"
+    },
+    {
+      "source": "apps/web/app/[accountCode]/[handle]/[slug]/renderer-shared.tsx",
+      "included": "apps/web/dapta/renderer-shared.tsx",
+      "sha256Original": "bcc8575254409d9cd956c762680b289d0136df5a5d36c0a3d5587c2c2ae21a7f"
+    },
+    {
+      "source": "apps/web/app/[accountCode]/[handle]/[slug]/event-batches.ts",
+      "included": "apps/web/dapta/event-batches.ts",
+      "sha256Original": "fcaca82781ca0e10c9d0a015d04738cb4fc00fba31a981e64b2f35d1285d89f0"
+    },
+    {
+      "source": "apps/web/app/[accountCode]/[handle]/[slug]/public-form.css",
+      "included": "apps/web/dapta/public-form.css",
+      "sha256Original": "5c9287c1de57ea0e2c757ead0aaeddb5773d921874a54374bcfe8254f2b6d830"
+    },
+    {
+      "source": "apps/web/lib/fonts.ts",
+      "included": "apps/web/lib/fonts.ts",
+      "sha256Original": "26869e5f7f158061eaba14817a0fa1777cd1a91a4463bb869b85883c883f5f65"
+    },
+    {
+      "source": "apps/web/components/public/searchable-dropdown.tsx",
+      "included": "apps/web/components/public/searchable-dropdown.tsx",
+      "sha256Original": "65e63d37683c37111188c5eb008aac4aa79a9d712bfa221d67616947456586dc"
+    },
+    {
+      "source": "apps/web/components/public/phone-input.tsx",
+      "included": "apps/web/components/public/phone-input.tsx",
+      "sha256Original": "51ca1cb1808e5c78cc5d65088df1f569a09c7f1743505cee7b24f48adcda6769"
+    },
+    {
+      "source": "apps/web/components/public/file-upload-input.tsx",
+      "included": "apps/web/components/public/file-upload-input.tsx",
+      "sha256Original": "93aa034d9feb1a05551ae9d3586a94a25255da3477968d53e2a84e161378ae60"
+    },
+    {
+      "source": "apps/web/components/brand/brand.tsx",
+      "included": "apps/web/components/brand/brand.tsx",
+      "sha256Original": "7a2ac6cec797a2566acd8067516519c0e1a1f6cf63d61a10b7d9ef81732c7c8b"
+    },
+    {
+      "source": "apps/web/lib/growth.ts",
+      "included": "apps/web/lib/growth.ts",
+      "sha256Original": "fc1a4c06d43e8cc9930b8f86e67710811b415ad395a520fe31e7a1d18bb9555e"
+    },
+    {
+      "source": "apps/web/lib/api-url.ts",
+      "included": "apps/web/lib/api-url.ts",
+      "sha256Original": "e8df692a6e82c79c92e133b71816ac04bbabbb2495c6caf2be1f6a9e272d554b"
+    },
+    {
+      "source": "apps/web/lib/focusable.ts",
+      "included": "apps/web/lib/focusable.ts",
+      "sha256Original": "9059b1a4c95a97b63d6f0bc2c75f1aff14405b3ff82b785e6db930842a5ede38"
+    },
+    {
+      "source": "apps/web/lib/captcha.ts",
+      "included": "apps/web/lib/captcha.ts",
+      "sha256Original": "68be60d2ec87466cdc1f34e23cb5360cc8a3cc31ddfa5cb3cab3377408911afa"
+    },
+    {
+      "source": "apps/web/components/public/captcha-challenge.tsx",
+      "included": "apps/web/components/public/captcha-challenge.tsx",
+      "sha256Original": "66f3c4ced64628937e53d4c9bbf5efbb5b7707ce0b7f13f96127f4c8598bab32"
+    },
+    {
+      "source": "apps/web/lib/product-name.ts",
+      "included": "apps/web/lib/product-name.ts",
+      "sha256Original": "d6fa5fb39b99bcba088a6d88611c32edce9e8c74286e16e6eb1e328fd31836b8"
+    },
+    {
+      "source": "apps/web/components/brand/dapta-logo.tsx",
+      "included": "apps/web/components/brand/dapta-logo.tsx",
+      "sha256Original": "e361e871e548bbf8120642ec0eba4fab0522db95161325dca7854c242797f18d"
+    },
+    {
+      "source": "apps/web/components/brand/forms-logo.tsx",
+      "included": "apps/web/components/brand/forms-logo.tsx",
+      "sha256Original": "e57fbf8e04305b7cb9466fb6a5f6d6267fe74d5a6dbf6dd8d7e24717037a2d21"
+    }
+  ]
+}

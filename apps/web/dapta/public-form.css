@@ -1,0 +1,2596 @@
+/* -----------------------------------------------------------------------------
+ * Public form renderer — a mobile-first "one question per screen" surface (the
+ * pilot's King-Kong/Typeform feel), styled as a MEMBER OF THE DAPTA CALENDARS
+ * FAMILY: it consumes the same shadcn semantic token contract as the app and the
+ * public booking page (@quill/shared/tokens.css → globals), so it is dark-first,
+ * theme-aware (light via prefers-color-scheme / data-theme), and harmonic with
+ * Dapta everywhere. Depth = surface + 1px border (no heavy rest shadow), lime is
+ * the one accent (always black text on lime).
+ *
+ * The one instance-level value is the per-form accent, threaded through
+ * `--pf-primary` — it DEFAULTS to the theme `--primary` and is overridden inline
+ * from `branding.primaryColor` (AA-clamped by the engine's accent helper), the
+ * same pattern the booking page's BrandedShell uses. Everything else is a
+ * semantic token so the page reads as one system. All rules are scoped under `.pf`.
+ * -------------------------------------------------------------------------- */
+
+/* The form's own ground: the pre-rebrand dark palette, owned HERE.
+   A public form never reads the app's token sheet for its base colours. The app
+   moved to paper, ink and Signal Green when dForms replaced the old look, and a
+   form published before that stored no colours, so it would have followed the app
+   to the new palette without its author touching anything. Owning the ground keeps
+   an unbranded form exactly what it was, and keeps a branded one from picking up a
+   different `--destructive` or `--faint` than the one it was designed against.
+   A form's own colours still win: `formThemeVars` writes them inline on this same
+   element, and an inline declaration beats a rule. A form born after the rebrand
+   carries the dForms colours in its config, so it lands on those, not on these.
+   `.pf.pf` outranks the sheet's `[data-theme='dark']` rule, which matches this
+   element too when the form is pinned dark and would otherwise win on source order. */
+.pf.pf {
+  --background: #0a0c0e;
+  --foreground: #e8edf2;
+  --card: #101418;
+  --card-foreground: #e8edf2;
+  --popover: #0d1013;
+  --popover-foreground: #e8edf2;
+  --primary: hsl(68 76% 61%);
+  --primary-foreground: #0c0e07;
+  --primary-edge: hsl(68 76% 61%);
+  --primary-ink: hsl(68 76% 61%);
+  --secondary: #7d8fa1;
+  --secondary-foreground: #0a0c0e;
+  --muted: #161c22;
+  --muted-foreground: #93a1ae;
+  --accent: #161c22;
+  --accent-foreground: #e8edf2;
+  --faint: #758592;
+  --destructive: #ff3b30;
+  --destructive-foreground: #0a0c0e;
+  --border: rgba(148, 170, 190, 0.16);
+  --input: rgba(148, 170, 190, 0.58);
+  --ring: hsl(68 76% 61% / 0.45);
+}
+
+/* A form whose own ground is light: the two text colours `formThemeVars` never
+   derives (errors and hints) take the pre-rebrand light palette's values, which
+   clear 4.5:1 on paper. The dark ones above measure 3.5:1 and 3.8:1 on white,
+   and every form created since the rebrand starts on white. */
+.pf.pf[data-pf-theme='light'] {
+  --faint: #586470;
+  --destructive: #c2261c;
+  --destructive-foreground: #ffffff;
+}
+
+.pf {
+  /* Accent defaults to the theme primary; branding.primaryColor overrides inline. */
+  --pf-primary: var(--primary);
+  --pf-primary-contrast: var(--primary-foreground);
+  /* The accent as a LINE. Separate from the fill because a colour bright enough
+     to BE a button is rarely legible as a 2px outline on the same page: the raw
+     accent measures 1.27:1 on paper, which made every focus stop on this surface
+     an indicator nobody could see. `formThemeVars` overrides this with the
+     author's own colour, clamped only when it would have been invisible. */
+  --pf-primary-edge: var(--primary-edge);
+
+  /* Radii are OWNED here rather than derived from the app's `--radius`.
+     They used to be `calc(var(--radius) * 2)` / `var(--radius)`, which silently
+     coupled every author's corner choice to whatever the CHROME's control radius
+     happened to be — retune the app's scale and published forms move with it. The
+     three `data-pf-radius` values are a closed union with fixed meanings, so they
+     own their numbers. These are `soft`, the default: the same 16px/8px pair it
+     has always meant. */
+  --pf-radius: 16px; /* cards & prominent controls */
+  --pf-radius-sm: 8px; /* inputs */
+  /* Two more corner roles, so the `radius` axis actually reaches everything that
+     has a corner. They used to be literals scattered through this file (6px on
+     small controls, 999px on bars and badges), which meant a form set to `sharp`
+     still rendered pill progress bars and a rounded eyebrow badge — the axis
+     stopped at the elements that happened to read from it. `soft` keeps these at
+     their historical values, so no form that chose it changes. */
+  --pf-radius-chip: 6px; /* small controls: option rows, chips, checkmarks */
+  --pf-radius-pill: 999px; /* rails & badges: progress tracks, eyebrow badges */
+  /* The client-logo tile is its own role because it is its own SIZE class: a
+     46px-tall plate, not a 6px-cornered option row. It was a literal 10px, and
+     folding it into `--pf-radius-chip` re-cornered it to 6 for every already
+     published `soft` form — which is exactly the change the paragraph above
+     promises does not happen. So it keeps its historical 10px and still tracks
+     the axis through the two blocks at the end of this file. */
+  --pf-radius-logo: 10px; /* client-logo plates */
+  --pf-gap: 12px;
+  --pf-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
+  color: var(--foreground);
+  /* `--pf-font` is set inline from `branding.fontFamily`; absent, the form keeps
+     inheriting the app's brand face exactly as it did before typography was
+     configurable. */
+  font-family: var(--pf-font, var(--font-sans, ui-sans-serif, system-ui, sans-serif));
+  -webkit-font-smoothing: antialiased;
+  position: relative;
+  isolation: isolate;
+}
+
+/* Scrollbars are themed globally (globals.css, tokens); no native track appears.
+   Lime focus ring, everywhere on this surface. */
+.pf :focus-visible {
+  outline: 2px solid var(--pf-primary-edge);
+  outline-offset: 2px;
+}
+
+/* ── Sticky promo banner ── */
+/* A tasteful accent STRIP, not a full-bleed accent fill: a soft wash of the brand
+   accent over the form ground reads well with any brand color — including neon
+   (#CCFF00) — where a solid fill would glare. Because the ground is now a light
+   tint, `--pf-primary-contrast` (which assumes a SOLID accent fill) would be
+   illegible here, so text uses the form foreground and the accent shows only as
+   the tint + hairline bottom border. Mixes against `--background` (the `.pf`
+   ground), so it stays correct in both the dark and light themes. */
+/* The promo strip. Every axis is a variable with the pre-feature value as its
+   own fallback, so a config that sets none of them renders byte-identical: the
+   fill is still 12% of the accent over the ground, and the padding/type still
+   come from `--pf-banner-pad` / `--pf-banner-size`, which only the size
+   attribute below ever changes. An authored `--pf-banner-bg` also takes over
+   the border, because a saturated strip with a 45%-accent hairline under it
+   reads as two competing bands rather than one. */
+.pf__banner {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  --pf-banner-pad: 12px 20px;
+  --pf-banner-size: 14px;
+  background: var(--pf-banner-bg, color-mix(in srgb, var(--pf-primary) 12%, var(--background)));
+  color: var(--pf-banner-fg, var(--foreground));
+  border-bottom: 1px solid
+    var(--pf-banner-bg, color-mix(in srgb, var(--pf-primary) 45%, transparent));
+  font-size: var(--pf-banner-size);
+  font-weight: 600;
+  text-align: center;
+  padding: var(--pf-banner-pad);
+  flex-shrink: 0;
+}
+/* Height presets. `md` is the default the rule above already sets, so it is
+   named here only to keep the three legible together. */
+.pf__banner[data-pf-banner-size='sm'] {
+  --pf-banner-pad: 7px 20px;
+  --pf-banner-size: 13px;
+}
+.pf__banner[data-pf-banner-size='md'] {
+  --pf-banner-pad: 12px 20px;
+  --pf-banner-size: 14px;
+}
+.pf__banner[data-pf-banner-size='lg'] {
+  --pf-banner-pad: 18px 24px;
+  --pf-banner-size: 17px;
+}
+
+/* ── Main area — everything below the banner ── */
+/* The banner is a full-width strip pinned to the viewport top (first child of
+   `.pf`, sticky for scrollable forms); `.pf__main` owns ALL the remaining
+   height. Every phase renders its content inside it, and desktop's per-phase
+   vertical centering targets THIS wrapper (see the min-width media block below)
+   — centering the content group therefore can never pull the banner down with
+   it. */
+.pf__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ── Top bar (back · logo · spacer) + progress ── */
+.pf__topbar {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 20px 16px;
+  flex-shrink: 0;
+}
+.pf__topbar-inner {
+  display: grid;
+  grid-template-columns: 40px 1fr 40px;
+  align-items: center;
+  max-width: 480px;
+  margin: 0 auto 14px;
+}
+.pf__back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: none;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  border-radius: var(--pf-radius-sm);
+  transition: background 0.12s var(--pf-ease), color 0.12s var(--pf-ease);
+}
+.pf__back:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.pf__back:active {
+  transform: scale(0.94);
+}
+.pf__back--placeholder {
+  visibility: hidden;
+  pointer-events: none;
+}
+.pf__logo-img {
+  display: block;
+  height: 30px;
+  width: auto;
+  max-width: 160px;
+  margin: 0 auto;
+  object-fit: contain;
+}
+.pf__logo--fallback {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+/* NO TEXT ON THIS SURFACE IS ACCENT-COLOURED.
+   The accent is a fill and a border — never letters. Colouring text with it
+   means a pale brand color silently erases whatever it is applied to, and an
+   author choosing a bright accent should not be quietly choosing to hide their
+   own copy. The brand still reads everywhere it fills something: the button,
+   the progress bar, a selected option, the focus ring, the badge's wash.
+   Two rules used to break this (the slider's value, the cover badge), and a
+   third coloured the full stop that once followed the form's name here. */
+
+/* ── Progress ── */
+.pf-progress {
+  max-width: 480px;
+  margin: 0 auto;
+  width: 100%;
+}
+.pf-progress__track {
+  height: 4px;
+  width: 100%;
+  background: var(--muted);
+  border-radius: var(--pf-radius-pill);
+  overflow: hidden;
+}
+.pf-progress__fill {
+  height: 100%;
+  background: var(--pf-primary);
+  border-radius: var(--pf-radius-pill);
+  transition: width 0.35s var(--pf-ease);
+}
+
+/* ── Body ── */
+.pf__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 32px 20px 28px;
+}
+.pf__inner {
+  width: 100%;
+  max-width: 540px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.pf__content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.pf-animate {
+  animation: pfSlideIn 0.34s var(--pf-ease);
+}
+@keyframes pfSlideIn {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pf-animate {
+    animation: none;
+  }
+}
+
+/* ── Question typography ── */
+.pf__question-wrap {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+}
+.pf__question {
+  text-align: center;
+  font-size: clamp(21px, 4.4vw, 28px);
+  font-weight: 700;
+  line-height: 1.28;
+  letter-spacing: -0.015em;
+  margin: 0;
+  color: var(--foreground);
+  text-wrap: balance;
+}
+.pf__helper {
+  text-align: center;
+  font-size: 15px;
+  color: var(--muted-foreground);
+  margin: 12px 0 0;
+  line-height: 1.5;
+  text-wrap: balance;
+}
+.pf__fields {
+  margin-top: 32px;
+}
+
+/* ── Inputs ── */
+.pf-input {
+  width: 100%;
+  padding: 14px 16px;
+  font-size: 16px;
+  font-family: inherit;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid var(--input);
+  border-radius: var(--pf-radius-sm);
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.12s var(--pf-ease), box-shadow 0.12s var(--pf-ease);
+}
+.pf-input::placeholder {
+  color: var(--muted-foreground);
+}
+.pf-input:hover {
+  border-color: var(--muted-foreground);
+}
+.pf-input:focus {
+  border-color: var(--pf-primary);
+  /* Glow derives from the per-form accent so border + glow always match the
+     brand color (--ring is fixed lime and mismatched a custom primaryColor). */
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pf-primary) 30%, transparent);
+}
+.pf-name-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--pf-gap);
+}
+@media (max-width: 480px) {
+  .pf-name-fields {
+    grid-template-columns: 1fr;
+  }
+}
+.pf-textarea {
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.5;
+}
+.pf-message__body {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+/* ── File upload ── */
+.pf-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* The idle state is a target, not a text field: it has to read as somewhere to
+   drop or click, and it is the only control here a visitor may not recognise. */
+.pf-upload-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 24px 16px;
+  font-family: inherit;
+  color: var(--muted-foreground);
+  background: var(--background);
+  border: 1px dashed var(--input);
+  border-radius: var(--pf-radius-sm);
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: border-color 0.12s var(--pf-ease), color 0.12s var(--pf-ease);
+}
+.pf-upload-drop:hover {
+  border-color: var(--pf-primary);
+  color: var(--foreground);
+}
+.pf-upload-drop:focus-visible {
+  outline: none;
+  border-color: var(--pf-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pf-primary) 30%, transparent);
+}
+.pf-upload-cta {
+  font-size: 16px;
+  color: var(--foreground);
+}
+.pf-upload-accepts {
+  font-size: 13px;
+}
+.pf-upload-file,
+.pf-upload-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 16px;
+  font-size: 15px;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid var(--input);
+  border-radius: var(--pf-radius-sm);
+  box-sizing: border-box;
+}
+/* A filename is arbitrary length and frequently long. It truncates so the
+   Remove control never leaves the box. */
+.pf-upload-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pf-upload-remove,
+.pf-upload-retry {
+  flex: 0 0 auto;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--muted-foreground);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.pf-upload-remove:hover,
+.pf-upload-retry:hover {
+  color: var(--foreground);
+}
+.pf-upload-progress {
+  flex-wrap: wrap;
+}
+.pf-upload-bar {
+  flex: 1 1 100%;
+  height: 4px;
+  background: var(--input);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.pf-upload-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--pf-primary);
+  transition: width 0.15s var(--pf-ease);
+}
+.pf-upload-percent {
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.pf-upload-error {
+  font-size: 14px;
+  color: var(--destructive);
+}
+
+/* ── Choices — list ── */
+.pf-choices--list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf-gap);
+}
+.pf-choice-list {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 56px;
+  padding: 14px 18px;
+  font-size: 15px;
+  font-family: inherit;
+  font-weight: 500;
+  text-align: left;
+  color: var(--foreground);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--pf-radius-sm);
+  cursor: pointer;
+  transition: border-color 0.12s var(--pf-ease), background 0.12s var(--pf-ease),
+    transform 0.08s var(--pf-ease);
+}
+.pf-choice-list:hover {
+  border-color: var(--muted-foreground);
+  background: var(--muted);
+}
+.pf-choice-list:active {
+  transform: scale(0.99);
+}
+.pf-choice-list--selected,
+.pf-choice-list--selected:hover {
+  border-color: var(--pf-primary);
+  background: color-mix(in srgb, var(--pf-primary) 14%, var(--card));
+}
+.pf-choice-list__radio {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--background);
+  flex-shrink: 0;
+  transition: background 0.12s, border-color 0.12s;
+}
+.pf-choice-list--selected .pf-choice-list__radio {
+  background: var(--pf-primary);
+  border-color: var(--pf-primary);
+  box-shadow: inset 0 0 0 3px var(--card);
+}
+/* Multi-select (checkbox) choice — a square box that fills + checks when on. */
+.pf-choice-list__check {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--pf-radius-chip);
+  border: 2px solid var(--border);
+  background: var(--background);
+  flex-shrink: 0;
+  transition: background 0.12s, border-color 0.12s;
+}
+.pf-choice-list--selected .pf-choice-list__check {
+  background: var(--pf-primary);
+  border-color: var(--pf-primary);
+}
+.pf-choice-list--selected .pf-choice-list__check::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 5px;
+  height: 10px;
+  border: solid var(--pf-primary-contrast);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+/* An emoji or initial: a square glyph, so a circle fits it. */
+.pf-choice-list__icon,
+.pf-choice-list__circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+  font-size: 19px;
+  line-height: 1;
+}
+/* No image variant here on purpose: `resolveOptionIcon` confines logos to the
+   card layout, so a list row only ever draws the glyph circle above. */
+.pf-choice-list__text {
+  flex: 1;
+  line-height: 1.35;
+}
+
+/* ── Choices — card grid ──
+   Flex, not `grid-template-columns: repeat(3, 1fr)`: a fixed 3-track grid left a
+   single card stranded in the left third and two cards hugging the left edge.
+   Wrapping flex items with `justify-content: center` centre ANY count — one card
+   sits in the middle, two sit centred as a pair, and beyond three they wrap into
+   centred rows. The basis targets three per row at full width while `min-width`
+   forces fewer as the viewport narrows, so the count adapts to the screen. */
+.pf-choices--icons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--pf-gap);
+}
+.pf-choice-icon {
+  flex: 0 1 calc((100% - 2 * var(--pf-gap)) / 3);
+  min-width: 132px;
+  max-width: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-height: 100px;
+  padding: 16px 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--pf-radius);
+  cursor: pointer;
+  transition: border-color 0.12s var(--pf-ease), background 0.12s var(--pf-ease),
+    transform 0.08s var(--pf-ease);
+  font-family: inherit;
+}
+.pf-choice-icon:hover {
+  border-color: var(--muted-foreground);
+  background: var(--muted);
+}
+.pf-choice-icon:active {
+  transform: scale(0.98);
+}
+.pf-choice-icon--selected,
+.pf-choice-icon--selected:hover {
+  border-color: var(--pf-primary);
+  background: color-mix(in srgb, var(--pf-primary) 12%, var(--card));
+}
+.pf-choice-icon__circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--muted);
+  font-size: 23px;
+  line-height: 1;
+}
+/* Card image icon. NO background, border or padding: a logo already carries its
+   own shape and fill — Facebook's blue disc, Instagram's gradient tile — so a
+   grey rounded box behind it reads as a chip stuck onto the card rather than as
+   the card's icon, and the padding pushes the mark off-centre.
+   The element still RESERVES the same 46px band as the glyph circle, so logos
+   of differing proportions stay on one baseline and the cards line up. */
+.pf-choice-icon__img-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 96px;
+  height: 46px;
+  overflow: hidden;
+}
+.pf-choice-icon__img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+.pf-choice-icon__label {
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+  line-height: 1.25;
+  color: var(--foreground);
+}
+/* A card whose option has no icon: its text alone, centred in the card. It
+   keeps the card's size, so in a row beside icon cards (which stretch the row
+   to the tallest) the label sits in the middle instead of hugging the top, and
+   a step of text-only cards keeps the same tiles as one with icons. The label
+   also gets the width the icon no longer needs. */
+.pf-choice-icon--text {
+  justify-content: center;
+  /* The height of a one-line icon card (16 + 46 + 10 + 17.5 + 16 padding and
+     border), so a row of text cards under a row of icon cards is the same
+     height instead of 8px shorter. */
+  min-height: 108px;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+.pf-choice-icon--text .pf-choice-icon__label {
+  overflow-wrap: anywhere;
+}
+
+/* ── Searchable dropdown ── */
+.pf-dropdown {
+  position: relative;
+}
+.pf-dropdown__list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: var(--pf-radius-sm);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  max-height: 244px;
+  overflow-y: auto;
+}
+.pf-dropdown__option {
+  display: block;
+  width: 100%;
+  padding: 11px 12px;
+  font-size: 15px;
+  font-family: inherit;
+  text-align: left;
+  color: var(--popover-foreground);
+  background: none;
+  border: none;
+  border-radius: var(--pf-radius-chip);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.pf-dropdown__option:hover,
+.pf-dropdown__option:focus-visible {
+  background: var(--muted);
+}
+.pf-dropdown__option--selected {
+  background: color-mix(in srgb, var(--pf-primary) 18%, var(--popover));
+  font-weight: 600;
+}
+.pf-dropdown__empty {
+  padding: 12px;
+  font-size: 14px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+/* ── Phone field (country-code picker + digits) ── */
+.pf-phone {
+  position: relative;
+}
+.pf-phone__row {
+  display: flex;
+  gap: var(--pf-gap);
+}
+/* The country trigger mirrors .pf-input's box so the two controls read as one
+   field: same border, radius, background, and height. Roomy on purpose — a
+   flag, a dial code and a chevron crammed shoulder-to-shoulder read as one
+   unlabelled glyph, and this is the first control a cold signup ever touches. */
+.pf-phone__country {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  min-width: 112px;
+  justify-content: center;
+  padding: 0 16px;
+  font-family: inherit;
+  font-size: 16px;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid var(--input);
+  border-radius: var(--pf-radius-sm);
+  cursor: pointer;
+  transition: border-color 0.12s var(--pf-ease), box-shadow 0.12s var(--pf-ease);
+}
+.pf-phone__country:hover {
+  border-color: var(--muted-foreground);
+}
+.pf-phone__flag {
+  font-size: 22px;
+  line-height: 1;
+}
+.pf-phone__dial {
+  color: var(--foreground);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.pf-phone__chevron {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1;
+  transition: transform 0.12s var(--pf-ease);
+}
+.pf-phone__chevron--open {
+  transform: rotate(180deg);
+}
+/* The digits input is a .pf-input; it just flexes to fill the row. */
+.pf-phone__number {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+.pf-phone__number--invalid,
+.pf-phone__number--invalid:hover {
+  border-color: var(--destructive);
+}
+.pf-phone__number--invalid:focus {
+  border-color: var(--destructive);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--destructive) 26%, transparent);
+}
+.pf-phone__hint {
+  text-align: center;
+  font-size: 13px;
+  color: var(--destructive);
+  margin: 10px 0 0;
+}
+/* Popover panel: a search box above a scrollable, focus-navigable country list.
+   Matches the .pf-dropdown popover look. */
+.pf-phone__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: var(--pf-radius-sm);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+.pf-phone__search {
+  padding: 11px 12px;
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--popover-foreground);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  outline: none;
+}
+.pf-phone__search::placeholder {
+  color: var(--muted-foreground);
+}
+.pf-phone__list {
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  max-height: 244px;
+  overflow-y: auto;
+}
+.pf-phone__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 15px;
+  font-family: inherit;
+  text-align: left;
+  color: var(--popover-foreground);
+  background: none;
+  border: none;
+  border-radius: var(--pf-radius-chip);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.pf-phone__option:hover,
+.pf-phone__option:focus-visible {
+  background: var(--muted);
+}
+.pf-phone__option--selected {
+  background: color-mix(in srgb, var(--pf-primary) 18%, var(--popover));
+  font-weight: 600;
+}
+.pf-phone__name {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.pf-phone__option-dial {
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Slider ── */
+.pf-slider {
+  padding: 8px 4px 4px;
+}
+.pf-slider__pill {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+  width: fit-content;
+  margin: 0 auto 24px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--pf-radius-pill);
+  padding: 14px 36px;
+  white-space: nowrap;
+}
+.pf-slider__pill-num {
+  font-size: 38px;
+  font-weight: 800;
+  line-height: 1;
+  /* The answer itself — the one number the respondent is reading. It cannot be
+     the accent (see the note under `.pf__logo--fallback`); the accent shows on the filled track. */
+  color: var(--foreground);
+  letter-spacing: -0.02em;
+}
+.pf-slider__pill-label {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--muted-foreground);
+}
+.pf-slider__input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  background: transparent;
+  cursor: pointer;
+  margin: 0;
+  padding: 10px 0;
+  display: block;
+}
+.pf-slider__input::-webkit-slider-runnable-track {
+  height: 10px;
+  border-radius: var(--pf-radius-pill);
+  background: linear-gradient(
+    to right,
+    var(--pf-primary) 0%,
+    var(--pf-primary) var(--pf-progress, 0%),
+    var(--muted) var(--pf-progress, 0%),
+    var(--muted) 100%
+  );
+}
+.pf-slider__input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--card);
+  border: 3px solid var(--pf-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  margin-top: -10px;
+  cursor: grab;
+}
+.pf-slider__input:active::-webkit-slider-thumb {
+  transform: scale(1.08);
+  cursor: grabbing;
+}
+.pf-slider__input::-moz-range-thumb {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--card);
+  border: 3px solid var(--pf-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  cursor: grab;
+}
+.pf-slider__input::-moz-range-track {
+  height: 10px;
+  border-radius: var(--pf-radius-pill);
+  background: var(--muted);
+}
+.pf-slider__input::-moz-range-progress {
+  height: 10px;
+  border-radius: var(--pf-radius-pill);
+  background: var(--pf-primary);
+}
+.pf-slider__scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding: 0 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  user-select: none;
+}
+
+/* ── Error ── */
+.pf__error {
+  text-align: center;
+  font-size: 14px;
+  color: var(--destructive);
+  margin-top: 14px;
+}
+
+/* ── Primary button ── */
+.pf__btn {
+  display: block;
+  width: 100%;
+  min-height: 54px;
+  padding: 0 24px;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--pf-primary-contrast);
+  background: var(--pf-primary);
+  border: none;
+  border-radius: var(--pf-radius-sm);
+  cursor: pointer;
+  transition: opacity 0.12s, transform 0.08s var(--pf-ease),
+    box-shadow 0.12s var(--pf-ease);
+}
+.pf__btn:hover {
+  opacity: 0.92;
+}
+.pf__btn:active {
+  transform: scale(0.99);
+}
+.pf__btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.pf__btn--inline {
+  margin-top: 28px;
+}
+
+/* ── Skip (optional scheduler step) ── */
+/* Deliberately NOT a `.pf__btn`. It was one, and that made "Skip for now" a
+   full-width 54px accent bar sitting right under the calendar — the most
+   prominent control on the screen, telling the respondent that leaving was the
+   intended move. An escape hatch has to be findable, not louder than the thing
+   it escapes, so this is the quiet-control idiom `.pf__back` already uses:
+   no fill, muted ink, a wash of `--muted` on hover.
+
+   Every colour here is derived from the form's OWN two colours, which is what
+   makes it follow the form's contrast: `formThemeVars` builds the palette by
+   mixing the ground toward the text, so this control lightens on a dark form and
+   darkens on a light one with no branch and no second rule. It deliberately
+   never takes `--pf-primary` — the brand kit paints that exactly as chosen with
+   no contrast correction, and a label is the one place that is not safe (see the
+   B3 note below). Measured on a cream form whose accent is lime, `--pf-primary`
+   against the ground is **1.14:1**.
+
+   Not scoped under `.pf[data-pf-button=…]` either, and that is the point: the
+   solid/outline/soft styles describe the PRIMARY action. A form whose buttons
+   are outlined should not also outline its skip. */
+.pf__skip {
+  display: block;
+  margin: 20px auto 0;
+  padding: 8px 16px;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.2;
+  /* NOT `--muted-foreground`, and the 12 points are the whole reason. That token
+     is a 62% mix tuned for helper text, and at 15px it lands at 3.97:1 on a cream
+     form — under the 4.5:1 AA floor for text this size. Measured against the
+     composited ground, 74% gives:
+
+           form            skip    helper(62%)   body    accent
+           default dark    8.75       7.00       15.70   13.49
+           cream + lime    5.71       3.97       12.81    1.15
+
+     Quiet against the body text it must not compete with, readable everywhere,
+     and the accent column is the argument for never colouring a label with it.
+
+     Two traps if you re-measure: composite the translucent card over the page
+     first, and let the entry transition settle — CSS interpolates colour in
+     oklab, so an early sample reads a mid-flight frame, not what ships. */
+  color: color-mix(in srgb, var(--foreground) 74%, var(--background));
+  /* The quiet controls follow the form's radius scale like everything else, but
+     via `--pf-radius-btn`'s own fallback rather than the button role: on a
+     `round` form a pill-shaped hover wash is right, on a sharp one it is not. */
+  border-radius: var(--pf-radius-btn, var(--pf-radius-sm));
+  cursor: pointer;
+  transition: background 0.12s var(--pf-ease), color 0.12s var(--pf-ease);
+}
+.pf__skip:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+/* ── Cover ── */
+.pf--cover .pf__cover-header {
+  flex-shrink: 0;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 20px;
+}
+.pf__cover-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 32px 24px;
+  text-align: center;
+  gap: 8px;
+}
+.pf__cover-content {
+  width: 100%;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.pf__badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  /* The eyebrow stays branded through its WASH, not its letters (see the
+     note under `.pf__logo--fallback`), a pale accent used as 12px uppercase type is the single
+     easiest way to make a cover's first line vanish. */
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--pf-primary) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pf-primary) 32%, transparent);
+  border-radius: var(--pf-radius-pill);
+  padding: 6px 14px;
+  margin: 0 0 18px;
+}
+.pf__title {
+  font-size: clamp(28px, 6vw, 38px);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  margin: 0;
+  color: var(--foreground);
+  text-wrap: balance;
+}
+.pf__subheadline {
+  font-size: clamp(15px, 3.6vw, 17px);
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  margin: 16px 0 0;
+  text-wrap: balance;
+}
+.pf__trust {
+  font-size: 13px;
+  color: var(--muted-foreground);
+  margin: 20px 0 0;
+}
+.pf__cover-footer {
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 0 24px calc(36px + env(safe-area-inset-bottom));
+}
+
+/* ── "Made with dForms" attribution ──
+   Form CHROME, not a document footer. It is rendered INSIDE `.pf` by the
+   renderers — under the cover CTA, as the last child of `.pf__main` on slides,
+   at the end of the page on vertical — so it participates in this layout.
+   Rendered after the renderer (as it was) it began exactly where the first
+   `100dvh` viewport ended: below the fold on slides, past the entire scroll on
+   vertical. Nobody ever saw it.
+
+   Discreet but PRESENT: a solid `--card` pill with a soft shadow so it detaches
+   from any form ground — including a photographic background — at the same 14px
+   the rest of the secondary copy uses, on the full foreground rather than
+   `--muted-foreground` (12px muted type on an arbitrary background is a
+   whisper). Semantic tokens only, so it follows the host's theme and branding.
+
+   Never sticky, never `position: fixed`: on a phone a floating pill fights the
+   inline Continue button and the on-screen keyboard. In flow it moves with the
+   layout, and on an `?embed=1` render (where document height IS content height)
+   it is visible for free.
+
+   NOTE `.pf__badge` is the cover EYEBROW — hence `.pf__attribution` here. */
+.pf__attribution {
+  display: flex;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+}
+.pf__attribution-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--foreground);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  text-decoration: none;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  transition: border-color 0.12s var(--pf-ease), box-shadow 0.12s var(--pf-ease),
+    transform 0.08s var(--pf-ease);
+}
+.pf__attribution-link:hover {
+  border-color: var(--pf-primary);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24);
+}
+.pf__attribution-link:active {
+  transform: scale(0.99);
+}
+.pf__attribution-mark {
+  height: 16px;
+  width: auto;
+  flex-shrink: 0;
+}
+
+/* Cover: directly under the CTA, inside the footer's own bottom padding. Every
+   respondent passes this screen, so it is the highest-value slot on the form
+   and it costs nothing — the footer already sits below the fold-safe CTA. */
+.pf__cover-footer .pf__attribution {
+  padding: 16px 0 0;
+}
+
+/* Vertical: an in-flow page footer at the end of the document (deliberately NOT
+   sticky — this layout reads as a page, and a pinned pill would follow the
+   respondent down every question). */
+.pf--vertical .pf__attribution {
+  padding: 32px 0 0;
+}
+
+/* ── Client-logos marquee ── */
+.pf-logos {
+  width: 100%;
+  max-width: 620px;
+  margin: 32px auto 0;
+}
+.pf-logos__label {
+  margin: 0 0 14px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.pf-logos__viewport {
+  position: relative; /* anchors the hidden measuring row */
+  overflow: hidden;
+  width: 100%;
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.pf-logos__track {
+  display: flex;
+  gap: var(--pf-gap);
+  width: max-content;
+  animation: pf-logos-marquee 24s linear infinite;
+}
+/* Invisible single-copy row the component measures to size the real track. */
+.pf-logos__track--measure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pf-logos__track {
+    animation: none;
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 100%;
+  }
+  /* Static fallback shows each logo once — the loop copies disappear. */
+  .pf-logos__chip--dup {
+    display: none;
+  }
+}
+.pf-logos__chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--pf-radius-logo);
+  padding: 8px 16px;
+  height: 46px;
+  min-width: 88px;
+  flex-shrink: 0;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.pf-logos__img {
+  height: 24px;
+  max-width: 100px;
+  object-fit: contain;
+}
+@keyframes pf-logos-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* ── Reveal / processing interstitial (generic, templated) ──
+   Sized off two variables so the three scales below move the mark and the copy
+   without any rule needing to know which scale is active. The values declared
+   here are the `md` ones — i.e. exactly what this screen has always rendered —
+   so a reveal with no presentation configured is unchanged. */
+.pf--reveal {
+  text-align: center;
+}
+.pf-reveal__inner {
+  flex: 1;
+  max-width: 420px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  /* The larger sizes are RANGES, not numbers: a fixed px mark that looks right
+     on a laptop is either lost on a wide screen or colliding with its twin on a
+     phone, and the versus row has to hold two marks AND the meter between them
+     at 375px.
+     `md` is the exception and is deliberately the flat, historical 52px. It is
+     the value an ABSENT `loaderSize` resolves to, so anything else here would
+     resize the mark on every reveal already published — and, worse, on every
+     form's `submitting` screen, which renders this same spinner with no reveal
+     config at all and so has no way to opt out. Growing the default is a real
+     product decision; it does not get to happen as a side effect of adding a
+     scale. */
+  --pf-reveal-mark: 52px;
+  --pf-reveal-headline: clamp(22px, 5vw, 28px);
+  --pf-reveal-subtitle: 15px;
+}
+/* The form's logo, above everything else on the screen. Margin only — the image
+   itself is already sized by `.pf__logo-img`, and the `data-pf-logo-size` presets
+   ride on the `.pf` root, so the reveal inherits whatever size the form is
+   configured for without this rule knowing about any of it. */
+.pf-reveal__brand {
+  margin: 0 0 28px;
+  display: flex;
+  justify-content: center;
+}
+/* Spread around the pinned `md`. `sm` has to sit clearly BELOW 52px or the two
+   smallest steps are 4px apart on a laptop and read as the same choice. */
+.pf-reveal__inner[data-pf-reveal-mark='sm'] {
+  --pf-reveal-mark: clamp(34px, 6vw, 40px);
+}
+.pf-reveal__inner[data-pf-reveal-mark='md'] {
+  --pf-reveal-mark: 52px;
+}
+.pf-reveal__inner[data-pf-reveal-mark='lg'] {
+  --pf-reveal-mark: clamp(64px, 13vw, 104px);
+}
+.pf-reveal__inner[data-pf-reveal-mark='xl'] {
+  --pf-reveal-mark: clamp(84px, 19vw, 168px);
+}
+.pf-reveal__inner[data-pf-reveal-text='sm'] {
+  --pf-reveal-headline: clamp(18px, 4vw, 22px);
+  --pf-reveal-subtitle: 14px;
+}
+.pf-reveal__inner[data-pf-reveal-text='lg'] {
+  --pf-reveal-headline: clamp(28px, 6.4vw, 40px);
+  --pf-reveal-subtitle: 18px;
+}
+.pf-reveal__inner[data-pf-reveal-text='xl'] {
+  --pf-reveal-headline: clamp(34px, 8vw, 54px);
+  --pf-reveal-subtitle: 20px;
+}
+/* The copy carries the screen on its own once there is no mark, so it gets the
+   width the loader would have taken. */
+.pf-reveal__inner[data-pf-reveal-loader='versus'],
+.pf-reveal__inner[data-pf-reveal-loader='none'] {
+  max-width: 560px;
+}
+.pf-reveal__spinner {
+  width: var(--pf-reveal-mark);
+  height: var(--pf-reveal-mark);
+  border-radius: 50%;
+  border: 4px solid var(--muted);
+  border-top-color: var(--pf-primary);
+  animation: pf-spin 0.9s linear infinite;
+  margin-bottom: 28px;
+}
+@keyframes pf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.pf-reveal__headline {
+  font-size: var(--pf-reveal-headline);
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin: 0 0 12px;
+  color: var(--foreground);
+  text-wrap: balance;
+}
+.pf-reveal__subtitle {
+  font-size: var(--pf-reveal-subtitle);
+  color: var(--muted-foreground);
+  margin: 0 0 24px;
+  line-height: 1.5;
+  text-wrap: balance;
+}
+.pf-reveal__track {
+  width: 260px;
+  max-width: 100%;
+  height: 8px;
+  background: var(--muted);
+  border-radius: var(--pf-radius-pill);
+  overflow: hidden;
+}
+.pf-reveal__fill {
+  height: 100%;
+  background: var(--pf-primary);
+  border-radius: var(--pf-radius-pill);
+  transition: width 0.08s linear;
+}
+
+/* ── Reveal: `versus` loader ──
+   The respondent on one side, the thing being matched on the other, progress
+   between them.
+
+   The two marks are deliberately the same INK/PAPER poles whatever the form's
+   colours are — a known person against an unresolved one only reads if the pair
+   is maximally opposed. Both poles are mixed out of the accent rather than
+   hardcoded, so they stay faintly branded and, crucially, stay a near-black and
+   a near-white on ANY accent: under a lime flood the paper mark must not come
+   out lime, or the "unknown" side disappears into the background. */
+.pf-reveal__versus {
+  --pf-mark-ink: color-mix(in srgb, var(--pf-primary) 12%, #05070a);
+  --pf-mark-paper: color-mix(in srgb, var(--pf-primary) 8%, #ffffff);
+  --pf-mark-halo: color-mix(in srgb, var(--pf-mark-paper) 55%, transparent);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: clamp(14px, 4vw, 32px);
+  width: 100%;
+  margin-top: 8px;
+}
+.pf-reveal__mark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  flex-shrink: 0;
+}
+/* The halo is two shadows: a tight ring hugging the circle, then a wide soft
+   bloom. One shadow cannot do both — a single large spread reads as a blur, and
+   a single tight one as a plain border. */
+.pf-reveal__mark-dot {
+  width: var(--pf-reveal-mark);
+  height: var(--pf-reveal-mark);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--pf-reveal-mark) * 0.44);
+  font-weight: 700;
+  line-height: 1;
+  /* The ring is a HAIRLINE that separates the disc from the page, not a second
+     shape competing with it — at the largest sizes a proportional stroke read
+     as a grey donut around the mark. The bloom is capped for the same reason:
+     left proportional the two marks' glows met in the middle of the meter. */
+  box-shadow:
+    0 0 0 clamp(1.5px, calc(var(--pf-reveal-mark) * 0.025), 4px) var(--pf-mark-halo),
+    0 0 clamp(14px, calc(var(--pf-reveal-mark) * 0.4), 40px) 0
+      color-mix(in srgb, var(--pf-mark-paper) 30%, transparent);
+}
+.pf-reveal__mark-dot svg {
+  width: 62%;
+  height: 62%;
+}
+.pf-reveal__mark-dot--you {
+  background: var(--pf-mark-ink);
+  color: var(--pf-mark-paper);
+}
+.pf-reveal__mark-dot--match {
+  background: var(--pf-mark-paper);
+  color: var(--pf-mark-ink);
+}
+.pf-reveal__mark-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--foreground);
+  max-width: 12ch;
+  text-wrap: balance;
+}
+.pf-reveal__mark-status {
+  margin: -6px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  max-width: 14ch;
+  text-wrap: balance;
+  animation: pf-reveal-breathe 1.6s ease-in-out infinite;
+}
+.pf-reveal__versus-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  /* Centred against the marks' DOTS, not their captions: the labels wrap to
+     different heights, and a percentage that drifts with the longer label
+     looks like a layout bug. */
+  /* `min-width` over `min-width: 0`: this column has to keep a readable meter
+     between two marks that never shrink, so it claims its floor first and the
+     row's `gap` gives way instead. */
+  min-width: 76px;
+  flex: 1;
+  max-width: 200px;
+  padding-top: calc(var(--pf-reveal-mark) * 0.24);
+}
+.pf-reveal__pct {
+  position: relative;
+  margin: 0;
+  font-size: calc(var(--pf-reveal-headline) * 0.72);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--foreground);
+}
+/* The sign is set smaller and raised: at the headline's weight a full-size `%`
+   competes with the number it is qualifying. */
+.pf-reveal__pct-sign {
+  font-size: 0.55em;
+  font-weight: 700;
+  vertical-align: 0.12em;
+  margin-left: 0.06em;
+}
+@keyframes pf-reveal-breathe {
+  50% {
+    opacity: 0.35;
+  }
+}
+.pf-reveal__versus .pf-reveal__track {
+  width: 100%;
+  height: 10px;
+  background: color-mix(in srgb, var(--pf-mark-ink) 22%, transparent);
+}
+/* A flat fill made the bar read as a second progress bar rather than the meter
+   BETWEEN the two marks. The gradient runs from the ink mark's colour to the
+   paper one's, so the bar is literally travelling from the respondent toward
+   the match — and it lands on the same two values the marks do, in every
+   colour mode, which is why the flood below does not need to restate it. */
+.pf-reveal__versus .pf-reveal__fill {
+  background: linear-gradient(90deg, var(--pf-mark-ink), var(--pf-mark-paper));
+}
+
+/* ── Reveal: accent flood ──
+   `accentBackground` paints the whole screen, so the copy has to flip to the
+   accent's contrast colour with it — otherwise a dark headline lands on a dark
+   brand colour and the screen is unreadable. `--pf-primary-contrast` is the
+   token the solid button already uses for exactly this pairing. */
+.pf--reveal[data-pf-reveal-bg='accent'] {
+  background: var(--pf-primary);
+}
+.pf--reveal[data-pf-reveal-bg='accent'] .pf-reveal__headline,
+.pf--reveal[data-pf-reveal-bg='accent'] .pf-reveal__subtitle,
+.pf--reveal[data-pf-reveal-bg='accent'] .pf-reveal__pct,
+.pf--reveal[data-pf-reveal-bg='accent'] .pf-reveal__mark-label {
+  color: var(--pf-primary-contrast);
+}
+.pf--reveal[data-pf-reveal-bg='accent'] .pf-reveal__track {
+  background: color-mix(in srgb, var(--pf-primary-contrast) 22%, transparent);
+}
+.pf--reveal[data-pf-reveal-bg='accent'] .pf-reveal__fill {
+  background: var(--pf-primary-contrast);
+}
+.pf--reveal[data-pf-reveal-bg='accent'] .pf-reveal__spinner {
+  border-color: color-mix(in srgb, var(--pf-primary-contrast) 25%, transparent);
+  border-top-color: var(--pf-primary-contrast);
+}
+/* The MARKS are deliberately NOT re-coloured here. They are an ink/paper pair
+   mixed out of the accent already (see `.pf-reveal__versus`), and that pair is
+   what the flood needs: over a lime page the known side stays near-black and
+   the unknown side stays near-white. Repainting them in the accent's own
+   contrast colour — which the rest of this block does to the copy — would
+   collapse the two marks onto the same value. Only their status line and the
+   meter follow the flood. */
+.pf--reveal[data-pf-reveal-bg='accent'] .pf-reveal__mark-status {
+  color: color-mix(in srgb, var(--pf-primary-contrast) 55%, transparent);
+}
+.pf--reveal[data-pf-reveal-bg='accent'] .pf-reveal__versus .pf-reveal__track {
+  background: color-mix(in srgb, var(--pf-mark-ink) 18%, transparent);
+}
+/* The versus meter keeps its ink -> paper gradient under the flood. It has to be
+   restated: the flood's generic `.pf-reveal__fill` rule above is 0,3,0 and sits
+   later in the file, so it out-specified the 0,2,0 versus rule and flattened the
+   gradient to a solid — while the builder canvas went on drawing it. */
+.pf--reveal[data-pf-reveal-bg='accent'] .pf-reveal__versus .pf-reveal__fill {
+  background: linear-gradient(90deg, var(--pf-mark-ink), var(--pf-mark-paper));
+}
+/* The marquee chips take the paper tone here too. Their default `--card` fill is
+   a near-black panel meant to sit on the form's own dark ground; left alone on a
+   flooded page it reads as a row of holes punched in the colour. */
+.pf--reveal[data-pf-reveal-bg='accent'] .pf-logos__chip {
+  background: color-mix(in srgb, var(--pf-primary) 8%, #ffffff);
+  color: color-mix(in srgb, var(--pf-primary) 12%, #05070a);
+  border-color: transparent;
+}
+.pf--reveal[data-pf-reveal-bg='accent'] .pf-logos__label {
+  color: color-mix(in srgb, var(--pf-primary-contrast) 65%, transparent);
+}
+
+/* The bar is a real progress signal, so it keeps moving; the decorative
+   infinite loops — the spin, and the two things that only breathe — stop. */
+@media (prefers-reduced-motion: reduce) {
+  .pf-reveal__spinner,
+  .pf-reveal__mark-status {
+    animation: none;
+  }
+}
+
+/* ── Spam protection: the human check ──
+   It runs right above a button that ends the form (`.pf-captcha--inline`), or
+   on the submitting screen for a finish with no button. The provider draws its
+   widget (an iframe) inside `.pf-captcha__widget`. In automatic mode it stays
+   invisible and takes no room unless the provider needs a click; in strict
+   mode it is always shown. The renderer asks for the `flexible` widget (fills
+   its box, 300px minimum) and falls back to `compact` below 300px, so a 320px
+   phone or a narrow embed never scrolls sideways. An embed grows to fit on its
+   own: the height reporter watches the form. */
+.pf-captcha {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+.pf-captcha__widget {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  justify-content: center;
+}
+/* Strict: hold the widget's height from the start, so the screen does not
+   jump when the iframe paints. */
+.pf-captcha[data-captcha-mode='strict'] .pf-captcha__widget {
+  min-height: 65px;
+}
+/* Automatic: once the check has passed the widget has nothing left to say,
+   and the spinner (or the button's "Submitting…") carries the rest. */
+.pf-captcha[data-captcha-mode='auto'][data-captcha-state='done'] {
+  display: none;
+}
+
+/* Above the button. Automatic takes no room at all until the provider asks
+   for a click, so the button sits exactly where it always did; strict holds
+   the widget's height from the first paint, so the button never jumps when
+   the check loads as the person scrolls to it. The slot stays a real box even
+   when empty: it is what tells the page that the end is on screen. */
+.pf-captcha--inline {
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.pf-captcha--inline[data-captcha-mode='strict'] {
+  min-height: 65px;
+}
+/* The slides step: the button's own 28px gap moves above the check, and the
+   button follows the check closely, as one group. */
+.pf__fields > .pf-captcha--inline[data-captcha-mode='strict'],
+.pf__fields > .pf-captcha--inline[data-captcha-state='interactive'] {
+  margin-top: 28px;
+}
+.pf__fields > .pf-captcha--inline[data-captcha-mode='strict'] + .pf__btn--inline,
+.pf__fields > .pf-captcha--inline[data-captcha-state='interactive'] + .pf__btn--inline {
+  margin-top: 12px;
+}
+/* The one-page footer is a column with a 12px gap: an empty automatic slot
+   gives its gap back, so the footer looks exactly as it does without one. */
+.pf-v__footer > .pf-captcha--inline[data-captcha-mode='auto']:not([data-captcha-state='interactive']) {
+  margin-bottom: -12px;
+}
+/* The one-page layout pins its questions and its Submit to the left, and a
+   left-aligned slides form does the same: the check lines up with them, its
+   drawn widget included. */
+.pf-v__footer > .pf-captcha--inline,
+.pf[data-pf-align='left'] .pf-captcha--inline {
+  align-items: flex-start;
+}
+.pf-v__footer > .pf-captcha--inline .pf-captcha__widget,
+.pf[data-pf-align='left'] .pf-captcha--inline .pf-captcha__widget {
+  justify-content: flex-start;
+}
+.pf-captcha__prompt {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+.pf-v__footer > .pf-captcha--inline .pf-captcha__prompt,
+.pf[data-pf-align='left'] .pf-captcha--inline .pf-captcha__prompt {
+  text-align: left;
+}
+/* A final submit that failed on this screen (a reveal or a scheduler as the
+   last step has no step to go back to): the message and a way to try again. */
+.pf-reveal__inner .pf__error {
+  margin: 0;
+}
+.pf-reveal__inner .pf__btn--inline {
+  max-width: 320px;
+  margin-top: 20px;
+}
+
+/* Strict mode's hidden field. Out of sight and out of reach for a person,
+   but NOT `display: none`, which some bots know to skip. Every property is
+   pinned so no form theme can bring it back into view. */
+.pf-hp {
+  position: absolute !important;
+  left: -10000px !important;
+  top: auto !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+@media (max-width: 480px) {
+  /* The row does NOT wrap. It used to, which dropped the meter to its own line
+     and left the two marks sitting against each other — the pairing reads as
+     "you versus the match" only while something separates them, and two
+     touching discs read as one blob. The marks shrink instead (their `clamp()`
+     minimums are sized for exactly this width) and the meter keeps its place
+     between them. */
+  .pf-reveal__versus {
+    gap: 14px;
+  }
+  .pf-reveal__versus-mid {
+    max-width: none;
+  }
+}
+
+/* ── Thank-you / outcome screen ── */
+.pf--done {
+  text-align: center;
+}
+.pf-done__inner {
+  flex: 1;
+  max-width: 460px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+}
+.pf-done__check {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: var(--pf-primary);
+  color: var(--pf-primary-contrast);
+  font-size: 32px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+  box-shadow: 0 0 0 8px color-mix(in srgb, var(--pf-primary) 14%, transparent);
+}
+.pf-done__title {
+  font-size: clamp(24px, 5vw, 30px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--foreground);
+  margin: 0 0 10px;
+}
+.pf-done__body {
+  font-size: 16px;
+  color: var(--muted-foreground);
+  margin: 0 0 28px;
+  line-height: 1.5;
+  text-wrap: balance;
+}
+.pf-done__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 24px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--pf-primary-contrast);
+  background: var(--pf-primary);
+  border-radius: var(--pf-radius-sm);
+  text-decoration: none;
+  transition: opacity 0.12s, transform 0.08s var(--pf-ease);
+}
+.pf-done__cta:hover {
+  opacity: 0.92;
+}
+.pf-done__cta:active {
+  transform: scale(0.99);
+}
+.pf-done__cta-question {
+  font-size: 14px;
+  color: var(--muted-foreground);
+  margin: 0 0 12px;
+}
+
+/* ── Desktop — a deliberate, centered, FRAMED card (not a lonely box on a void).
+   The interactive surface (topbar + body) reads as one bounded panel centered in
+   the viewport, echoing the booking page's card-on-canvas composition. Mobile
+   keeps the immersive full-bleed flow. ── */
+@media (min-width: 769px) {
+  .pf__body {
+    padding: 40px 40px 36px;
+    justify-content: center;
+  }
+  .pf__inner {
+    flex: 0 1 auto;
+  }
+  .pf__fields {
+    margin-top: 36px;
+  }
+
+  /* Steps: join topbar + body into a single centered card. Centering + the
+     card's page padding live on .pf__main — the area BELOW the pinned banner —
+     never on .pf itself, which would drag the banner down with the group (and
+     the padding would inset the banner off the viewport edges). */
+  .pf:not(.brujula-form):not(.pf--cover):not(.pf--reveal):not(.pf--done):not(.pf--vertical) .pf__main {
+    justify-content: center;
+    padding: 40px 24px;
+  }
+  .pf:not(.brujula-form):not(.pf--cover):not(.pf--reveal):not(.pf--done) .pf__topbar {
+    width: 100%;
+    max-width: 560px;
+    margin: 0 auto;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: var(--pf-radius) var(--pf-radius) 0 0;
+    padding: 18px 24px 16px;
+  }
+  .pf:not(.brujula-form):not(.pf--cover):not(.pf--reveal):not(.pf--done) .pf__body {
+    width: 100%;
+    max-width: 560px;
+    margin: 0 auto;
+    flex: 0 1 auto;
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 var(--pf-radius) var(--pf-radius);
+    background: var(--card);
+  }
+  /* Inputs on the card use the app canvas colour for depth contrast. */
+  .pf:not(.pf--cover) .pf-input {
+    background: var(--background);
+  }
+
+  /* The attribution is the last child of `.pf__main`, so on this band it rides
+     the centered card group and reads as ATTACHED beneath the card, in the same
+     centered column, inside the stage's own air. Below 769px `.pf__main` is
+     fluid and top-aligned — there is no card to attach to — so the base padding
+     just ends the column instead. */
+  .pf__main > .pf__attribution {
+    padding: 16px 0 0;
+  }
+
+  /* Cover: logo + hero card + CTA as one vertically-centered group (inside
+     the main area, below the pinned banner). */
+  .pf--cover .pf__main {
+    justify-content: center;
+  }
+  .pf--cover .pf__cover-header {
+    background: transparent;
+    border-bottom: none;
+    padding-top: 32px;
+  }
+  .pf__cover-main {
+    flex: 0 1 auto;
+    padding: 24px;
+  }
+  .pf__cover-content {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--pf-radius);
+    padding: 44px 44px 40px;
+  }
+  .pf__cover-footer {
+    padding-bottom: 32px;
+  }
+
+  /* Centered outcome/interstitial cards (inside the main area). */
+  .pf--reveal .pf__main,
+  .pf--done .pf__main {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Narrow shrinks the strip by re-declaring the VARIABLES, not the properties.
+     Setting `font-size`/`padding` directly here would out-specify nothing and
+     be out-specified by the `[data-pf-banner-size]` presets above — so `md`
+     (the value the default silently is) would shrink on a phone while an
+     explicitly-chosen `md` would not. Same knob, same layer, three sizes. */
+  .pf__banner {
+    --pf-banner-pad: 10px 14px;
+    --pf-banner-size: 12px;
+  }
+  .pf__banner[data-pf-banner-size='sm'] {
+    --pf-banner-pad: 6px 14px;
+    --pf-banner-size: 11px;
+  }
+  .pf__banner[data-pf-banner-size='md'] {
+    --pf-banner-pad: 10px 14px;
+    --pf-banner-size: 12px;
+  }
+  .pf__banner[data-pf-banner-size='lg'] {
+    --pf-banner-pad: 14px 16px;
+    --pf-banner-size: 15px;
+  }
+  .pf__body {
+    padding: 24px 16px;
+  }
+  .pf__fields {
+    margin-top: 24px;
+  }
+}
+
+/* Booking screen (post-submit inline scheduler) */
+.pf--booking-page { min-height: 100dvh; display: flex; flex-direction: column; }
+.pf-booking { flex: 1; display: flex; flex-direction: column; padding: 24px 16px; }
+.pf-booking__header { text-align: center; margin-bottom: 8px; }
+.pf-booking__widget { flex: 1; }
+.pf-booking__trouble {
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  margin-top: 12px;
+}
+.pf-booking__trouble a { color: inherit; text-decoration: underline; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * DESIGN AXES
+ *
+ * Every rule below is keyed off a `data-pf-*` attribute stamped on the `.pf`
+ * root by `designAttributes()` (@quill/engine). The attribute is ALWAYS present
+ * — the resolver fills every axis — so these are plain overrides of the base
+ * rules above rather than conditional additions, and the value that reproduces
+ * the pre-design look is the one the resolver returns for an absent config.
+ *
+ * Colors are NOT here: they arrive as inline custom properties from
+ * `formThemeVars()`, because they are per-form values rather than a fixed set
+ * of choices. This file only knows about the closed unions.
+ * ═════════════════════════════════════════════════════════════════════════ */
+
+/* ── Corner radius (B2) ─────────────────────────────────────────────────── */
+/* `soft` is the original 16/8 pair and the default. `sharp` squares the chip and
+   pill roles too — a form whose buttons are hard-cornered but whose progress bar
+   is a lozenge is not sharp, it is inconsistent. Round stops well short of a pill
+   for inputs: a 999px text field reads as a search box, not a form field. */
+.pf[data-pf-radius='sharp'] {
+  --pf-radius: 2px;
+  --pf-radius-sm: 2px;
+  --pf-radius-btn: 2px;
+  --pf-radius-chip: 2px;
+  --pf-radius-pill: 2px;
+  --pf-radius-logo: 2px;
+}
+.pf[data-pf-radius='soft'] {
+  --pf-radius-btn: var(--pf-radius-sm);
+}
+.pf[data-pf-radius='round'] {
+  --pf-radius: 24px;
+  --pf-radius-sm: 14px;
+  --pf-radius-btn: 999px;
+  /* Both of these were missing, so a `round` form rendered 14px option rows
+     containing 6px checkmark boxes and 10px logo plates — the same "buttons hard,
+     progress bar a lozenge" inconsistency the roles were introduced to end, just
+     pointing the other way. */
+  --pf-radius-chip: 10px;
+  --pf-radius-logo: 16px;
+}
+.pf__btn {
+  border-radius: var(--pf-radius-btn, var(--pf-radius-sm));
+}
+
+/* ── Button style (B3) ──────────────────────────────────────────────────── */
+/* `outline` and `soft` keep the LABEL on `--foreground` rather than on the
+   accent. The accent is clamped to 3:1 against the ground, which is the
+   large-text threshold — fine for a border or a wash, not for a 16px label.
+   The accent still carries the button's identity through its border/fill. */
+.pf[data-pf-button='outline'] .pf__btn {
+  background: transparent;
+  color: var(--foreground);
+  border: 1.5px solid var(--pf-primary);
+}
+.pf[data-pf-button='outline'] .pf__btn:hover {
+  background: color-mix(in srgb, var(--pf-primary) 12%, transparent);
+  opacity: 1;
+}
+.pf[data-pf-button='soft'] .pf__btn {
+  background: color-mix(in srgb, var(--pf-primary) 18%, var(--background));
+  color: var(--foreground);
+  border: 1px solid color-mix(in srgb, var(--pf-primary) 32%, transparent);
+}
+.pf[data-pf-button='soft'] .pf__btn:hover {
+  background: color-mix(in srgb, var(--pf-primary) 26%, var(--background));
+  opacity: 1;
+}
+
+/* Width. Full-width is the legacy behaviour (a thumb-sized target on mobile);
+   `auto` shrinks to the label.
+   Positioning uses `width: fit-content` + auto margins, NOT `align-self`: the
+   button's parents (`.pf__fields`, `.pf__cover-footer`) are plain blocks, so a
+   flex-only property silently does nothing and the button collapses against the
+   left edge of a centred column. */
+/* Positioned BOTH ways on purpose, because the button has two kinds of parent:
+   `.pf__fields` / `.pf__cover-footer` are plain blocks, where `align-self` is
+   ignored and the auto margins do the work; `.pf-v__footer` is a column flex,
+   where `align-self` defaults to `stretch` and would override `fit-content`,
+   so it has to be set explicitly. Each property covers the case the other
+   misses — using only one silently fails on half the layouts. */
+.pf[data-pf-button-width='auto'] .pf__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-width: 180px;
+  padding: 0 32px;
+  margin-inline: auto;
+  align-self: center;
+}
+/* The cover is a centred composition whatever the question alignment is, so it
+   is EXCLUDED here rather than overridden after — a `.pf--cover` override would
+   carry lower specificity than this selector and silently lose, which is exactly
+   how the button ended up hugging the left edge under centred cover copy. */
+.pf:not(.pf--cover)[data-pf-button-width='auto'][data-pf-align='left'] .pf__btn {
+  margin-inline: 0 auto;
+  align-self: flex-start;
+}
+/* The one-page layout reads as a document and pins its questions left, so its
+   Submit hugs the same edge regardless of the alignment axis (which it does not
+   expose). Wins over the cover exclusion above by being more specific. */
+.pf--vertical[data-pf-button-width='auto'] .pf-v__footer .pf__btn {
+  margin-inline: 0 auto;
+  align-self: flex-start;
+}
+/* Below 480px a shrink-wrapped primary action is a usability regression, so the
+   button goes full-width regardless of the setting. */
+@media (max-width: 480px) {
+  .pf[data-pf-button-width='auto'] .pf__btn {
+    width: 100%;
+    align-self: stretch;
+  }
+}
+
+/* ── Progress style (B4) ────────────────────────────────────────────────── */
+.pf[data-pf-progress='none'] .pf-progress {
+  display: none;
+}
+.pf-progress__dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.pf-progress__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--muted);
+  transition: background 0.25s var(--pf-ease), transform 0.25s var(--pf-ease);
+}
+.pf-progress__dot--on {
+  background: var(--pf-primary);
+}
+.pf-progress__dot--current {
+  transform: scale(1.45);
+}
+/* Many steps would push the dots past the container; they compress instead of
+   wrapping, because a second row of dots reads as a second progress bar. */
+@media (max-width: 480px) {
+  .pf-progress__dots {
+    gap: 4px;
+  }
+}
+.pf-progress__steps {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Background treatment (B5) ──────────────────────────────────────────── */
+/* Each treatment paints a layer BEHIND the content (`z-index:-1` inside the
+   root's own stacking context, hence `isolation:isolate` on `.pf`). Painting a
+   pseudo-element rather than the root's `background` keeps `--background`
+   meaningful for every child that mixes against it — cards, borders and the
+   banner all reference it. */
+.pf[data-pf-bg]:not([data-pf-bg='solid'])::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+.pf[data-pf-bg='gradient']::before {
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--pf-primary) 16%, var(--background)) 0%,
+    var(--background) 58%
+  );
+}
+.pf[data-pf-bg='glow']::before {
+  background:
+    radial-gradient(
+      70% 50% at 50% 0%,
+      color-mix(in srgb, var(--pf-primary) 22%, transparent) 0%,
+      transparent 70%
+    ),
+    var(--background);
+}
+.pf[data-pf-bg='image']::before {
+  background-image: linear-gradient(
+      color-mix(in srgb, var(--background) var(--pf-bg-overlay, 55%), transparent),
+      color-mix(in srgb, var(--background) var(--pf-bg-overlay, 55%), transparent)
+    ),
+    var(--pf-bg-image);
+  background-size: cover;
+  background-position: center;
+}
+/* With a photograph behind it the top bar's flat `--card` fill reads as a stuck
+   panel, so it becomes a translucent blur over the image instead. */
+.pf[data-pf-bg='image'] .pf__topbar {
+  background: color-mix(in srgb, var(--card) 78%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+/* ── Logo (B6) ─────────────────────────────────────────────────────────── */
+.pf[data-pf-logo-size='sm'] .pf__logo-img {
+  height: 22px;
+}
+.pf[data-pf-logo-size='md'] .pf__logo-img {
+  height: 30px;
+}
+.pf[data-pf-logo-size='lg'] .pf__logo-img {
+  height: 42px;
+  max-width: 220px;
+}
+.pf[data-pf-logo-size='sm'] .pf__logo--fallback {
+  font-size: 15px;
+}
+.pf[data-pf-logo-size='lg'] .pf__logo--fallback {
+  font-size: 22px;
+}
+/* Left placement collapses the trailing spacer track so the logo starts right
+   after the back button instead of being centred by the 3-column grid. */
+.pf[data-pf-logo-pos='left'] .pf__topbar-inner {
+  grid-template-columns: 40px 1fr 0;
+}
+.pf[data-pf-logo-pos='left'] .pf__logo-img {
+  margin: 0;
+}
+.pf[data-pf-logo-pos='left'] .pf__logo--fallback {
+  text-align: left;
+  display: block;
+}
+
+/* ── Attribution badge size ────────────────────────────────────────────── */
+/* `md` is every `.pf__attribution*` rule above, untouched. This block describes
+   only `sm`, so an absent or `md` value renders the pill byte-identically to
+   what shipped before the axis existed.
+
+   Shrinking the pill ALONE would leave the wrapper it used to fill, and a 40px
+   hole reads worse than the big badge did, so the wrapper comes down with it.
+   `.pf__attribution` carries FOUR paddings, one per context (base, cover
+   footer, vertical page, and the desktop band where the pill rides the centred
+   card), and each needs its own `sm` twin or the gap survives exactly where the
+   badge is most visible.
+
+   An attribute on the `.pf` root scores 0,3,0 against those rules' 0,2,0, so
+   every override lands on specificity alone, no `!important`. The hover rule
+   below is not optional for the same reason in reverse: the `sm` base at 0,3,0
+   would otherwise outrank `.pf__attribution-link:hover` at 0,2,0 and freeze the
+   pill's shadow on hover. */
+.pf[data-pf-badge-size='sm'] .pf__attribution {
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+}
+.pf[data-pf-badge-size='sm'] .pf__cover-footer .pf__attribution {
+  padding: 10px 0 0;
+}
+.pf--vertical[data-pf-badge-size='sm'] .pf__attribution {
+  padding: 20px 0 0;
+}
+.pf[data-pf-badge-size='sm'] .pf__attribution-link {
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  /* The lift scales with the pill: the `md` shadow reads as a smudge under a
+     chip this size. */
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.16);
+}
+.pf[data-pf-badge-size='sm'] .pf__attribution-link:hover {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
+}
+.pf[data-pf-badge-size='sm'] .pf__attribution-mark {
+  height: 14px;
+}
+
+@media (min-width: 769px) {
+  /* The `sm` twin of the rule that attaches the pill beneath the centred card. */
+  .pf[data-pf-badge-size='sm'] .pf__main > .pf__attribution {
+    padding: 10px 0 0;
+  }
+}
+
+/* ── Content alignment & measure (B9) ──────────────────────────────────── */
+.pf[data-pf-width='wide'] .pf__inner {
+  max-width: 720px;
+}
+.pf[data-pf-width='wide'] .pf__topbar-inner,
+.pf[data-pf-width='wide'] .pf-progress {
+  max-width: 660px;
+}
+/* The one-page layout holds its column in `.pf-v__page`, not `.pf__inner`, so
+   it needs its own rule — without it the control is offered on a vertical form
+   and changes nothing, which is worse than not offering it. */
+.pf[data-pf-width='wide'] .pf-v__page {
+  max-width: 760px;
+}
+/* CENTRE is the legacy alignment (`.pf__question` has always been centred), so
+   `left` is the override — the direction matters, because defaulting the other
+   way would re-align every already-published form. */
+.pf[data-pf-align='left'] .pf__question,
+.pf[data-pf-align='left'] .pf__helper {
+  text-align: left;
+  text-wrap: pretty;
+}
+.pf[data-pf-align='left'] .pf__question-wrap {
+  margin-left: 0;
+}
+/* Inputs are left-aligned under either setting: centred placeholder text that
+   jumps left the moment you type is worse than the small asymmetry of a
+   left-aligned field under a centred question. */
+
+/* ── Step transition (B10) ─────────────────────────────────────────────── */
+/* `slide` is the original animation. All three are overridden wholesale by the
+   reduced-motion block that already exists above. */
+.pf[data-pf-transition='fade'] .pf-animate {
+  animation: pfFadeIn 0.28s var(--pf-ease);
+}
+.pf[data-pf-transition='none'] .pf-animate {
+  animation: none;
+}
+@keyframes pfFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pf[data-pf-transition='fade'] .pf-animate {
+    animation: none;
+  }
+}
+
+/* ── Screens: several questions on one slides card (#200) ──────────────────────
+   A screen of several questions keeps the slide's card, topbar and single
+   button, and stacks its questions in one column. `.pf-s` marks the card's
+   content and `data-pf-screen-size` counts the questions showing. With ONE
+   (logic hid the others) the card keeps the slide's own typography; with two
+   or more the question titles drop to the one-page size and a hairline
+   separates them. A `message` on the card is its heading and keeps the slide
+   size. The alignment axis applies as on any slide, and here the errors and a
+   message's body follow it too. A form without screens never renders `.pf-s`,
+   so nothing below reaches it.
+
+   The three bands need no rules of their own beyond the gap: the card is the
+   same box a slide is. Up to 480px the column scrolls with the document and
+   the button closes it in flow; up to 768px the body's own padding (32/20)
+   frames it; from 769px it is the centred 560px card (720px wide) and grows
+   downward, with `.pf`'s `min-height: 100dvh` (not a height) letting the page
+   grow instead of clipping the card's top. */
+.pf-s__member + .pf-s__member {
+  margin-top: 28px;
+  padding-top: 28px;
+  border-top: 1px solid var(--border);
+}
+.pf-s:not([data-pf-screen-size='1']) .pf-s__member:not(.pf-s__member--message) .pf__question {
+  font-size: clamp(17px, 3vw, 21px);
+}
+.pf-s:not([data-pf-screen-size='1']) .pf-s__member .pf__helper {
+  margin-top: 6px;
+}
+.pf-s:not([data-pf-screen-size='1']) .pf-s__member .pf__fields {
+  margin-top: 16px;
+}
+.pf-s__member .pf__error {
+  margin-top: 10px;
+}
+.pf-s__member--error .pf-input {
+  border-color: var(--destructive);
+}
+.pf[data-pf-align='left'] .pf-s .pf__error,
+.pf[data-pf-align='left'] .pf-s .pf-message__body {
+  text-align: left;
+}
+/* The one button, with the screen's error summary and (on a screen that ends
+   the form) spam protection's check right above it. The check's spacing is
+   the slide's (see "Spam protection" above). */
+.pf-s__footer > .pf__error {
+  margin-top: 24px;
+}
+.pf-s__footer > .pf-captcha--inline[data-captcha-mode='strict'],
+.pf-s__footer > .pf-captcha--inline[data-captcha-state='interactive'] {
+  margin-top: 28px;
+}
+.pf-s__footer > .pf-captcha--inline[data-captcha-mode='strict'] + .pf__btn--inline,
+.pf-s__footer > .pf-captcha--inline[data-captcha-state='interactive'] + .pf__btn--inline {
+  margin-top: 12px;
+}
+@media (max-width: 480px) {
+  .pf-s__member + .pf-s__member {
+    margin-top: 20px;
+    padding-top: 20px;
+  }
+}
+
+/* NOTE: there is no `.pf--embedded` block any more. The builder used to render
+   this markup as a SUBTREE of the admin document, which needed preview-only
+   rules here to re-scope the `100dvh` floor, the fixed background layer and the
+   sticky banner to the device frame — and those rules were a rendering the
+   public page never has. The preview is now a same-origin iframe with its own
+   viewport (`app/preview/`), so every rule below applies to it unmodified and
+   the stylesheet describes exactly one form again. */
+
+/* ── Vertical layout (config.layout = 'vertical') ─────────────────────────────
+   One page, natural document flow. Deliberately NO viewport-height tricks
+   beyond the root min-height: this is the layout an embed (iframe auto-height)
+   will reuse, so content must size itself. Question typography reuses the
+   slides tokens but left-aligned — a stacked page reads as a document, not a
+   stage. All rules scoped under .pf--vertical / .pf-v__*. */
+
+/* The banner joins the progress bar in ONE sticky group (`.pf-v__sticky`);
+   its own stickiness is neutralized so the two never fight for the top edge. */
+.pf--vertical .pf__banner {
+  position: static;
+}
+.pf-v__sticky {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+.pf-v__progressbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: color-mix(in srgb, var(--background) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.pf-v__progressbar .pf-progress {
+  max-width: 420px;
+  flex: 1;
+}
+.pf-v__progress-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Natural top-aligned flow — the desktop media block's per-phase centering is
+   excluded for this layout (see the :not(.pf--vertical) in that selector). */
+.pf--vertical .pf__main {
+  justify-content: flex-start;
+}
+
+.pf-v__page {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 20px calc(56px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+.pf-v__header {
+  display: flex;
+  justify-content: center;
+  padding: 22px 0 2px;
+}
+
+/* Cover-as-hero: same badge/title/subheadline/trust classes as the cover
+   screen, centered, with the logos marquee — but no Start gate. */
+.pf-v__hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 22px 0 26px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Question blocks: a quiet stacked list separated by hairlines. */
+.pf-v__question {
+  padding: 26px 0;
+  border-bottom: 1px solid var(--border);
+}
+.pf-v__question:last-of-type {
+  border-bottom: none;
+}
+.pf-v__question .pf__question-wrap {
+  max-width: none;
+  margin: 0;
+}
+.pf-v__question .pf__question {
+  text-align: left;
+  font-size: clamp(17px, 3vw, 21px);
+}
+.pf-v__question .pf__helper {
+  text-align: left;
+  margin-top: 6px;
+}
+.pf-v__question .pf__fields {
+  margin-top: 16px;
+}
+.pf-v__question .pf__error {
+  text-align: left;
+  margin-top: 10px;
+}
+.pf-v__required {
+  /* NOT the accent (see the note under `.pf__logo--fallback`): this asterisk is the only thing
+     telling a respondent a field is mandatory, and a pale brand colour would
+     erase it. It reads as emphasis through weight and the error colour it
+     shares with the message it predicts. */
+  color: var(--destructive);
+  margin-left: 2px;
+}
+.pf-v__question--error .pf-input {
+  border-color: var(--destructive);
+}
+
+/* Lazy scheduler embed: hold the space quietly until it mounts. */
+.pf-v__embed-placeholder {
+  min-height: 480px;
+  border: 1px dashed var(--border);
+  border-radius: var(--pf-radius);
+  background: var(--muted);
+}
+
+/* Footer: the single Submit for the whole page. */
+.pf-v__footer {
+  padding-top: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pf-v__footer .pf__error {
+  margin-top: 0;
+}
+
+@media (min-width: 769px) {
+  .pf-v__page {
+    padding-bottom: 88px;
+  }
+  .pf-v__question {
+    padding: 30px 0;
+  }
+}
+@media (max-width: 480px) {
+  .pf-v__progressbar {
+    padding: 8px 14px;
+  }
+}
+
+/* ── Embedded mode (?embed=1, inside a host page's iframe) ────────────────────
+   The page's height must BE the content's height — the embed reporter measures
+   the document and the host's embed.js sizes the iframe to match, so any
+   viewport-height rule here would turn into a feedback loop (iframe grows →
+   dvh grows → content "grows" → iframe grows…). Slides keeps a comfortable
+   floor so a single question doesn't render as a cramped strip. */
+.pf-embed-root .pf {
+  min-height: 480px;
+}
+.pf-embed-root .pf--vertical {
+  min-height: 0;
+}
+
+/* --- Public member page (/[accountCode]/[handle]) --------------------------
+   Reuses the form's own tokens (--background, --foreground, --pf-primary,
+   --pf-font) rather than a second palette, so a profile and the forms it links
+   to can be made to match by setting the same branding. */
+.pf--profile {
+  min-height: 100vh;
+  padding: 48px 20px 72px;
+}
+.pf-profile {
+  width: min(100%, 620px);
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.pf-profile__head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.pf-profile__avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+}
+.pf-profile__avatar--initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--pf-primary);
+  color: var(--pf-primary-contrast);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.pf-profile__id {
+  min-width: 0;
+}
+.pf-profile__name {
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+.pf-profile__headline {
+  margin-top: 4px;
+  font-size: 15px;
+  color: var(--muted-foreground);
+}
+.pf-profile__bio {
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--foreground);
+  max-width: 60ch;
+}
+.pf-profile__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+}
+.pf-profile__links a {
+  display: inline-block;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--pf-radius, 8px);
+  font-size: 14px;
+  color: var(--foreground);
+  text-decoration: none;
+}
+.pf-profile__links a:hover {
+  border-color: var(--pf-primary);
+}
+.pf-profile__section {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  margin-bottom: 12px;
+}
+.pf-profile__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pf-profile__list a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--pf-radius, 8px);
+  background: var(--card);
+  color: var(--foreground);
+  text-decoration: none;
+  transition: border-color 0.15s;
+}
+.pf-profile__list a:hover {
+  border-color: var(--pf-primary);
+}
+.pf-profile__form-name {
+  font-size: 16px;
+  font-weight: 500;
+}
+.pf-profile__form-go {
+  color: var(--pf-primary);
+  flex-shrink: 0;
+}
+.pf-profile__empty {
+  font-size: 15px;
+  color: var(--muted-foreground);
+}

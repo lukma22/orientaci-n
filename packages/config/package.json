@@ -1,0 +1,34 @@
+{
+  "name": "@quill/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared config: zod env schema + tsconfig/eslint/prettier presets.",
+  "main": "./dist/env.js",
+  "types": "./dist/env.d.ts",
+  "exports": {
+    "./env": {
+      "types": "./dist/env.d.ts",
+      "import": "./dist/env.js"
+    },
+    "./dotenv": {
+      "types": "./dist/dotenv.d.ts",
+      "import": "./dist/dotenv.js"
+    },
+    "./tsconfig/base.json": "./tsconfig/base.json",
+    "./tsconfig/nest.json": "./tsconfig/nest.json",
+    "./tsconfig/next.json": "./tsconfig/next.json",
+    "./eslint": "./eslint.config.js",
+    "./prettier": "./prettier.config.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "echo \"(config) no tests\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {}
+}

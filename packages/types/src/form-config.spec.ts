@@ -1,0 +1,413 @@
+/**
+ * Contract tests for `formConfigSchema` — architecture invariant #4: the form
+ * config is a versioned schema that gets EXTENDED, never broken. Every field
+ * added here is optional, so the assertions that matter are the ones about what
+ * a config saved before the field existed still does.
+ *
+ * The presentation axes added alongside the banner/reveal/marquee work are the
+ * first ones to be pinned this way; the file exists so the next additive field
+ * has somewhere obvious to prove the same thing.
+ */
+import { describe, expect, it } from 'vitest';
+import {
+  captchaCData,
+  folderInputSchema,
+  folderViewSchema,
+  formConfigSchema,
+  formCreateInputSchema,
+  formFolderPatchSchema,
+  hasExtraHubspotDestination,
+  publicFormSchema,
+  submissionSchema,
+  workspaceTimezoneSchema,
+} from './index';
+
+/** The smallest config the schema accepts — one step, nothing configured. */
+function baseConfig() {
+  return {
+    version: 1 as const,
+    steps: [{ key: 'q1', type: 'text' as const, question: 'Your name?' }],
+  };
+}
+
+describe('formConfigSchema — banner presentation (additive)', () => {
+  it('a config with a banner and no look still parses, and sets no look', () => {
+    const parsed = formConfigSchema.parse({
+      ...baseConfig(),
+      cover: { bannerText: 'Free credits when you book' },
+    });
+    expect(parsed.cover?.bannerText).toBe('Free credits when you book');
+    // Absent, not defaulted: the renderer's CSS fallback owns the legacy look,
+    // so writing a default in here would be the one way to change it.
+    expect(parsed.cover?.bannerColor).toBeUndefined();
+    expect(parsed.cover?.bannerSize).toBeUndefined();
+  });
+
+  it('accepts the authored banner look', () => {
+    const parsed = formConfigSchema.parse({
+      ...baseConfig(),
+      cover: {
+        bannerText: 'Free credits',
+        bannerColor: '#c6f24e',
+        bannerTextColor: '#0b0b0b',
+        bannerSize: 'lg',
+      },
+    });
+    expect(parsed.cover?.bannerColor).toBe('#c6f24e');
+    expect(parsed.cover?.bannerTextColor).toBe('#0b0b0b');
+    expect(parsed.cover?.bannerSize).toBe('lg');
+  });
+
+  it('rejects a banner color that could break out of the CSS color context', () => {
+    const bad = { ...baseConfig(), cover: { bannerColor: 'red;} body{display:none' } };
+    expect(formConfigSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects an unknown banner size rather than silently ignoring it', () => {
+    const bad = { ...baseConfig(), cover: { bannerSize: 'huge' } };
+    expect(formConfigSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('formConfigSchema — client-logo scope (additive)', () => {
+  it('a legacy marquee parses with no scope — the renderer reads that as the cover', () => {
+    const parsed = formConfigSchema.parse({
+      ...baseConfig(),
+      cover: { clientLogos: [{ name: 'Acme' }] },
+    });
+    expect(parsed.cover?.clientLogos).toHaveLength(1);
+    expect(parsed.cover?.clientLogosScope).toBeUndefined();
+  });
+
+  it('accepts each scope', () => {
+    for (const clientLogosScope of ['cover', 'reveal', 'both'] as const) {
+      const parsed = formConfigSchema.parse({ ...baseConfig(), cover: { clientLogosScope } });
+      expect(parsed.cover?.clientLogosScope).toBe(clientLogosScope);
+    }
+  });
+});
+
+describe('formConfigSchema — reveal presentation (additive)', () => {
+  it('a legacy reveal parses with no presentation set', () => {
+    const parsed = formConfigSchema.parse({
+      ...baseConfig(),
+      reveal: { headline: 'Matching you…', durationMs: 5000 },
+    });
+    expect(parsed.reveal?.durationMs).toBe(5000);
+    expect(parsed.reveal?.loader).toBeUndefined();
+    expect(parsed.reveal?.accentBackground).toBeUndefined();
+  });
+
+  it('accepts the full presentation on a reveal STEP as well as the form-level one', () => {
+    const reveal = {
+      loader: 'versus' as const,
+      loaderSize: 'lg' as const,
+      textSize: 'sm' as const,
+      accentBackground: true,
+      versusYouLabel: 'You',
+      versusMatchLabel: 'Your [role]',
+    };
+    const parsed = formConfigSchema.parse({
+      version: 1 as const,
+      steps: [{ key: 'r1', type: 'reveal' as const, question: '', reveal }],
+      reveal,
+    });
+    expect(parsed.steps[0]?.reveal?.loader).toBe('versus');
+    expect(parsed.steps[0]?.reveal?.versusMatchLabel).toBe('Your [role]');
+    expect(parsed.reveal?.accentBackground).toBe(true);
+  });
+
+  it('rejects an unknown loader', () => {
+    const bad = { ...baseConfig(), reveal: { loader: 'fireworks' } };
+    expect(formConfigSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('keeps the existing duration bounds', () => {
+    expect(formConfigSchema.safeParse({ ...baseConfig(), reveal: { durationMs: 400 } }).success).toBe(
+      false,
+    );
+    expect(
+      formConfigSchema.safeParse({ ...baseConfig(), reveal: { durationMs: 30_001 } }).success,
+    ).toBe(false);
+  });
+});
+
+/**
+ * The one-HubSpot rule is a WRITE-path predicate, not a schema refinement, so
+ * it gets tested where it lives. What matters most here is the false cases: it
+ * is called on request bodies, so anything that is not a well-formed array of
+ * destination objects must answer "no extra" rather than throw and turn a bad
+ * request into a 500.
+ */
+describe('hasExtraHubspotDestination', () => {
+  const hubspot = { type: 'hubspot', enabled: true, settings: {} };
+  const webhook = { type: 'webhook', enabled: true, settings: { url: 'https://x.test/h' } };
+
+  it('is true only from the second HubSpot entry onwards', () => {
+    expect(hasExtraHubspotDestination([])).toBe(false);
+    expect(hasExtraHubspotDestination([hubspot])).toBe(false);
+    expect(hasExtraHubspotDestination([hubspot, hubspot])).toBe(true);
+    expect(hasExtraHubspotDestination([hubspot, hubspot, hubspot])).toBe(true);
+  });
+
+  it('counts HubSpot entries wherever they sit, and ignores webhooks', () => {
+    expect(hasExtraHubspotDestination([webhook, webhook, webhook])).toBe(false);
+    expect(hasExtraHubspotDestination([webhook, hubspot, webhook])).toBe(false);
+    expect(hasExtraHubspotDestination([webhook, hubspot, webhook, hubspot])).toBe(true);
+  });
+
+  // `enabled` is deliberately not consulted: a disabled first + enabled second
+  // is the sharpest form of the trap, since the two readers disagree on it.
+  it('ignores `enabled` entirely', () => {
+    expect(hasExtraHubspotDestination([{ ...hubspot, enabled: false }, hubspot])).toBe(true);
+  });
+
+  it('never throws on input that is not a destinations array', () => {
+    for (const junk of [undefined, null, {}, 'hubspot', 42, [null], [undefined], ['hubspot']]) {
+      expect(hasExtraHubspotDestination(junk)).toBe(false);
+    }
+    // Two junk entries next to two real ones must still be caught.
+    expect(hasExtraHubspotDestination([null, hubspot, 'x', hubspot])).toBe(true);
+  });
+
+  /**
+   * The rule is "never go UP", because screens that edit ONE field write the
+   * whole array back. Without the comparison, a legacy form's every unrelated
+   * save is a 400 and its Build tab stops working.
+   */
+  describe('compared against what is stored', () => {
+    it('allows a legacy pair to round-trip unchanged', () => {
+      expect(hasExtraHubspotDestination([hubspot, hubspot], [hubspot, hubspot])).toBe(false);
+    });
+
+    it('allows a legacy form to collapse toward one', () => {
+      expect(hasExtraHubspotDestination([hubspot], [hubspot, hubspot])).toBe(false);
+    });
+
+    it('refuses any increase', () => {
+      expect(hasExtraHubspotDestination([hubspot, hubspot], [hubspot])).toBe(true);
+      expect(hasExtraHubspotDestination([hubspot, hubspot], [])).toBe(true);
+      expect(hasExtraHubspotDestination([hubspot, hubspot, hubspot], [hubspot, hubspot])).toBe(true);
+    });
+
+    it('never lets a stored violation authorise a bigger one', () => {
+      // Three is refused even though two are already stored.
+      expect(hasExtraHubspotDestination([hubspot, hubspot, hubspot], [hubspot, hubspot])).toBe(true);
+    });
+
+    it('treats an absent or unreadable stored value as nothing stored', () => {
+      expect(hasExtraHubspotDestination([hubspot, hubspot], undefined)).toBe(true);
+      expect(hasExtraHubspotDestination([hubspot, hubspot], null)).toBe(true);
+      expect(hasExtraHubspotDestination([hubspot, hubspot], 'nonsense')).toBe(true);
+      // One is always fine, whatever is stored.
+      expect(hasExtraHubspotDestination([hubspot], undefined)).toBe(false);
+    });
+
+    it('still ignores webhooks on both sides', () => {
+      expect(hasExtraHubspotDestination([webhook, webhook, hubspot], [hubspot])).toBe(false);
+    });
+  });
+});
+
+describe('workspace timezone input', () => {
+  it('accepts a known IANA zone or null, rejects garbage and an unknown zone', () => {
+    expect(workspaceTimezoneSchema.parse({ timezone: 'America/Bogota' })).toEqual({ timezone: 'America/Bogota' });
+    expect(workspaceTimezoneSchema.parse({ timezone: null, onlyIfUnset: true })).toEqual({
+      timezone: null,
+      onlyIfUnset: true,
+    });
+    expect(() => workspaceTimezoneSchema.parse({ timezone: 'Mars/Olympus' })).toThrow();
+    expect(() => workspaceTimezoneSchema.parse({ timezone: 'drop table' })).toThrow();
+    expect(() => workspaceTimezoneSchema.parse({})).toThrow();
+  });
+});
+
+describe('formConfigSchema: form language and button labels (additive)', () => {
+  it('a legacy config parses with neither field set (Auto language, stock labels)', () => {
+    const parsed = formConfigSchema.parse(baseConfig());
+    expect(parsed.language).toBeUndefined();
+    expect(parsed.labels).toBeUndefined();
+  });
+
+  it('keeps an explicit language and partial labels', () => {
+    const parsed = formConfigSchema.parse({
+      ...baseConfig(),
+      language: 'es',
+      labels: { next: 'Siguiente' },
+    });
+    expect(parsed.language).toBe('es');
+    expect(parsed.labels).toEqual({ next: 'Siguiente' });
+  });
+
+  it('accepts null for both (the editor clears back to Auto / stock this way)', () => {
+    const parsed = formConfigSchema.parse({ ...baseConfig(), language: null, labels: null });
+    expect(parsed.language).toBeNull();
+    expect(parsed.labels).toBeNull();
+  });
+
+  it('rejects a language the product does not ship and a label over 80 characters', () => {
+    expect(() => formConfigSchema.parse({ ...baseConfig(), language: 'fr' })).toThrow();
+    expect(() => formConfigSchema.parse({ ...baseConfig(), labels: { submit: 'x'.repeat(81) } })).toThrow();
+  });
+});
+
+describe('long-text character limits (additive)', () => {
+  const longText = (extra: Record<string, unknown>) => ({
+    version: 1 as const,
+    steps: [{ key: 'why', type: 'textarea' as const, question: 'Tell us more', ...extra }],
+  });
+
+  it('carries both limits and leaves them undefined when nothing is configured', () => {
+    const parsed = formConfigSchema.parse(longText({ minChars: 20, maxChars: 400 }));
+    expect(parsed.steps[0].minChars).toBe(20);
+    expect(parsed.steps[0].maxChars).toBe(400);
+    const legacy = formConfigSchema.parse(longText({}));
+    expect(legacy.steps[0].minChars).toBeUndefined();
+    expect(legacy.steps[0].maxChars).toBeUndefined();
+  });
+
+  it('rejects a floor above the ceiling', () => {
+    expect(() => formConfigSchema.parse(longText({ minChars: 400, maxChars: 20 }))).toThrow();
+    // Equal is a question with exactly one acceptable length. Odd, not invalid.
+    expect(() => formConfigSchema.parse(longText({ minChars: 20, maxChars: 20 }))).not.toThrow();
+    // One limit alone has nothing to contradict.
+    expect(() => formConfigSchema.parse(longText({ minChars: 400 }))).not.toThrow();
+    expect(() => formConfigSchema.parse(longText({ maxChars: 20 }))).not.toThrow();
+  });
+
+  it('rejects a zero, a fraction and a limit past the cap', () => {
+    expect(() => formConfigSchema.parse(longText({ minChars: 0 }))).toThrow();
+    expect(() => formConfigSchema.parse(longText({ maxChars: 12.5 }))).toThrow();
+    expect(() => formConfigSchema.parse(longText({ maxChars: 10001 }))).toThrow();
+  });
+
+  it('does not disturb the slider bounds that share the step', () => {
+    // `min`/`max` are the slider's and stay untouched by the new pair.
+    const parsed = formConfigSchema.parse({
+      version: 1 as const,
+      steps: [{ key: 's', type: 'slider' as const, min: 0, max: 100 }],
+    });
+    expect(parsed.steps[0].min).toBe(0);
+    expect(parsed.steps[0].max).toBe(100);
+  });
+});
+
+describe('screen groups (additive)', () => {
+  const grouped = (screenGroup?: unknown) => ({
+    version: 1 as const,
+    steps: [
+      { key: 'first', type: 'text' as const, question: 'First name?', screenGroup },
+      { key: 'email', type: 'email' as const, question: 'Email?', screenGroup },
+    ],
+  });
+
+  it('a legacy config parses exactly as before: no step carries a screen', () => {
+    const parsed = formConfigSchema.parse(baseConfig());
+    expect(parsed.steps[0]).toEqual({ key: 'q1', type: 'text', question: 'Your name?' });
+    expect('screenGroup' in parsed.steps[0]).toBe(false);
+  });
+
+  it('keeps the id on save: a field the schema did not list would be stripped', () => {
+    const parsed = formConfigSchema.parse(grouped('screen_1'));
+    expect(parsed.steps.map((s) => s.screenGroup)).toEqual(['screen_1', 'screen_1']);
+  });
+
+  it('takes 1 to 64 characters, nothing else', () => {
+    expect(() => formConfigSchema.parse(grouped('s'.repeat(64)))).not.toThrow();
+    expect(() => formConfigSchema.parse(grouped('s'.repeat(65)))).toThrow();
+    expect(() => formConfigSchema.parse(grouped(''))).toThrow();
+    expect(() => formConfigSchema.parse(grouped(3))).toThrow();
+  });
+});
+
+describe('submissionSchema: the locale the respondent saw (additive)', () => {
+  it('carries an optional locale and rejects an unknown one', () => {
+    expect(submissionSchema.parse({ sessionId: 's', data: {} }).locale).toBeUndefined();
+    expect(submissionSchema.parse({ sessionId: 's', data: {}, locale: 'es' }).locale).toBe('es');
+    expect(() => submissionSchema.parse({ sessionId: 's', data: {}, locale: 'fr' })).toThrow();
+  });
+});
+
+describe('spam protection (additive)', () => {
+  it('a legacy config parses with no spam protection, which means off', () => {
+    const parsed = formConfigSchema.parse(baseConfig());
+    expect(parsed.spamProtection).toBeUndefined();
+  });
+
+  it('keeps the switch and the mode, and accepts null (the editor clears it this way)', () => {
+    expect(
+      formConfigSchema.parse({ ...baseConfig(), spamProtection: { captcha: true } }).spamProtection,
+    ).toEqual({ captcha: true });
+    expect(
+      formConfigSchema.parse({ ...baseConfig(), spamProtection: { captcha: true, strict: true } })
+        .spamProtection,
+    ).toEqual({ captcha: true, strict: true });
+    expect(formConfigSchema.parse({ ...baseConfig(), spamProtection: null }).spamProtection).toBeNull();
+  });
+
+  it('rejects a switch that is not a boolean', () => {
+    expect(() =>
+      formConfigSchema.parse({ ...baseConfig(), spamProtection: { captcha: 'yes' } }),
+    ).toThrow();
+  });
+});
+
+describe('publicFormSchema: the challenge the renderer runs (additive)', () => {
+  it('parses a payload without one, and one carrying the provider and its site key', () => {
+    const base = { slug: 'f', name: 'F', config: baseConfig() };
+    expect(publicFormSchema.parse(base).captcha).toBeUndefined();
+    expect(
+      publicFormSchema.parse({ ...base, captcha: { provider: 'turnstile', siteKey: 'site-key', strict: true } })
+        .captcha,
+    ).toEqual({ provider: 'turnstile', siteKey: 'site-key', strict: true });
+  });
+});
+
+describe('submissionSchema: the challenge token and the honeypot (additive)', () => {
+  it('carries both as optional top-level fields, never inside the answers', () => {
+    const parsed = submissionSchema.parse({ sessionId: 's', data: {}, captchaToken: 'tok', hp: '' });
+    expect(parsed.captchaToken).toBe('tok');
+    expect(parsed.hp).toBe('');
+    expect(parsed.data).toEqual({});
+    const legacy = submissionSchema.parse({ sessionId: 's', data: {} });
+    expect(legacy.captchaToken).toBeUndefined();
+    expect(legacy.hp).toBeUndefined();
+  });
+
+  it('accepts a token of 2048 characters and rejects one of 2049', () => {
+    expect(submissionSchema.parse({ sessionId: 's', data: {}, captchaToken: 'a'.repeat(2048) }).captchaToken)
+      .toHaveLength(2048);
+    expect(() =>
+      submissionSchema.parse({ sessionId: 's', data: {}, captchaToken: 'a'.repeat(2049) }),
+    ).toThrow();
+  });
+});
+
+describe('captchaCData', () => {
+  it('passes a session id made of allowed characters through unchanged', () => {
+    const uuid = '3f1b3d7e-2b9a-4c7e-9e3a-6f0d2a1c5b44';
+    expect(captchaCData(uuid)).toBe(uuid);
+  });
+
+  it('drops the characters the widget refuses and caps the length', () => {
+    expect(captchaCData('a b/c:d_e-f')).toBe('abcd_e-f');
+    expect(captchaCData('x'.repeat(300))).toHaveLength(255);
+  });
+});
+
+describe('folder schemas', () => {
+  it('trims and bounds a folder name, and the move patch requires the key', () => {
+    expect(folderInputSchema.parse({ name: '  Sales  ' })).toEqual({ name: 'Sales' });
+    expect(() => folderInputSchema.parse({ name: '   ' })).toThrow();
+    expect(() => folderInputSchema.parse({ name: 'x'.repeat(81) })).toThrow();
+    expect(formFolderPatchSchema.parse({ folderId: null })).toEqual({ folderId: null });
+    expect(formFolderPatchSchema.parse({ folderId: 'f1' })).toEqual({ folderId: 'f1' });
+    expect(() => formFolderPatchSchema.parse({})).toThrow();
+  });
+
+  it('create input carries an optional folderId; the view carries it too', () => {
+    expect(formCreateInputSchema.parse({ name: 'Quiz', folderId: 'f1' }).folderId).toBe('f1');
+    expect(formCreateInputSchema.parse({ name: 'Quiz' }).folderId).toBeUndefined();
+    expect(folderViewSchema.parse({ id: 'f1', name: 'Sales', createdAt: 1, updatedAt: 1 }).name).toBe('Sales');
+  });
+});

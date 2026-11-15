@@ -1,0 +1,134 @@
+
+  #brujula-dashboard-review { width:100%; }
+  #brujula-dashboard-review * { box-sizing:border-box; }
+  #brujula-dashboard-review [hidden] { display:none!important; }
+  #brujula-dashboard-review .bdr-app { --bd-bg:#0a0c0e; --bd-fg:#e8edf2; --bd-lime:#d3e750; --bd-muted:#a7b2ba; --bd-panel:#12161a; --bd-line:#293139; --bd-track:#293037; background:var(--bd-bg); color:var(--bd-fg); border-radius:16px; overflow:hidden; font-family:"Figtree",system-ui,sans-serif; font-size:14px; line-height:1.5; color-scheme:dark; }
+  #brujula-dashboard-review .bdr-header { display:flex; align-items:center; justify-content:space-between; gap:18px; padding:22px 32px; border-bottom:1px solid var(--bd-line); }
+  #brujula-dashboard-review .bdr-wordmark { font-size:23px; font-weight:500; letter-spacing:-.8px; }
+  #brujula-dashboard-review .bdr-wordmark span { color:var(--bd-lime); }
+  #brujula-dashboard-review .bdr-header-note { color:var(--bd-muted); font-size:12px; }
+  #brujula-dashboard-review .bdr-main { padding:27px 32px 24px; max-width:960px; margin:0 auto; }
+  #brujula-dashboard-review .bdr-page-heading { margin:0 0 22px; }
+  #brujula-dashboard-review .bdr-eyebrow { color:var(--bd-lime); font-size:11px; letter-spacing:1.4px; margin:0 0 7px; }
+  #brujula-dashboard-review h2 { color:var(--bd-fg); font-family:inherit; font-weight:500; font-size:32px; line-height:1.16; letter-spacing:-.8px; margin:0 0 10px; }
+  #brujula-dashboard-review h3 { color:var(--bd-fg); font-family:inherit; font-weight:500; font-size:15px; line-height:1.35; margin:0; }
+  #brujula-dashboard-review .bdr-page-heading>p:last-child { color:var(--bd-muted); margin:0; font-size:13px; }
+  #brujula-dashboard-review .bdr-panel { background:var(--bd-panel); border:1px solid var(--bd-line); border-radius:15px; padding:20px; min-width:0; }
+  #brujula-dashboard-review .bdr-panel-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  #brujula-dashboard-review .bdr-panel-heading>span { color:var(--bd-muted); font-size:11px; white-space:nowrap; }
+  #brujula-dashboard-review .bdr-recommendations { padding:18px 20px 5px; }
+  #brujula-dashboard-review .bdr-career-list { list-style:none; padding:0; margin:9px 0 0; }
+  #brujula-dashboard-review .bdr-career-list>li+li { border-top:1px solid var(--bd-line); }
+  #brujula-dashboard-review .bdr-career-link { display:flex; align-items:center; gap:14px; min-height:54px; padding:9px 0; color:var(--bd-fg); text-decoration:none; border-radius:7px; }
+  #brujula-dashboard-review .bdr-career-link:hover .bdr-career-name { color:var(--bd-lime); }
+  #brujula-dashboard-review .bdr-rank { color:var(--bd-lime); font-size:12px; min-width:21px; }
+  #brujula-dashboard-review .bdr-career-name { font-size:16px; font-weight:500; min-width:0; }
+  #brujula-dashboard-review .bdr-career-preview { display:grid; min-width:0; gap:2px; }
+  #brujula-dashboard-review .bdr-career-rate { color:var(--bd-lime); font-size:13px; font-variant-numeric:tabular-nums; }
+  #brujula-dashboard-review .bdr-career-missing { color:var(--bd-muted); font-size:11px; }
+  #brujula-dashboard-review .bdr-detail-link { margin-left:auto; display:flex; align-items:center; gap:5px; color:var(--bd-muted); font-size:11px; white-space:nowrap; }
+  #brujula-dashboard-review i[data-lucide] { display:inline-block; width:16px; height:16px; }
+  #brujula-dashboard-review .bdr-section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:24px 0 11px; }
+  #brujula-dashboard-review .bdr-section-heading>span { color:var(--bd-muted); font-size:11px; }
+  #brujula-dashboard-review .bdr-profile-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; }
+  #brujula-dashboard-review .bdr-panel-caption { margin:6px 0 19px; color:var(--bd-muted); font-size:11px; }
+  #brujula-dashboard-review .bdr-bars { display:grid; gap:18px; padding-top:3px; }
+  #brujula-dashboard-review .bdr-bar-label { display:flex; justify-content:space-between; gap:10px; margin-bottom:7px; color:var(--bd-fg); font-size:12px; }
+  #brujula-dashboard-review .bdr-bar-label>span:last-child { color:var(--bd-muted); font-variant-numeric:tabular-nums; }
+  #brujula-dashboard-review .bdr-bar { height:4px; border-radius:4px; background:var(--bd-track); overflow:hidden; }
+  #brujula-dashboard-review .bdr-bar>span { height:100%; background:var(--bd-lime); display:block; border-radius:inherit; }
+  #brujula-dashboard-review .bdr-map-panel { display:flex; flex-direction:column; }
+  #brujula-dashboard-review .bdr-map-panel .bdr-panel-caption { margin-bottom:4px; }
+  #brujula-dashboard-review .bdr-radar { min-width:0; width:100%; flex:1; display:grid; align-items:center; }
+  #brujula-dashboard-review .bdr-radar svg { display:block; width:100%; height:auto; }
+  #brujula-dashboard-review .bdr-dominant { text-align:center; color:var(--bd-muted); font-size:11px; margin:0; }
+  #brujula-dashboard-review .bdr-dominant span { color:var(--bd-lime); padding:0 4px; }
+  #brujula-dashboard-review .bdr-actions { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:10px; padding-top:20px; }
+  #brujula-dashboard-review .bdr-action { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:42px; border:1px solid #3a444d; border-radius:10px; padding:10px 16px; background:transparent; color:var(--bd-fg); font:inherit; font-size:12px; font-weight:500; text-decoration:none; }
+  #brujula-dashboard-review .bdr-actions>.bdr-action { flex:0 1 166px; }
+  #brujula-dashboard-review .bdr-action:hover { background:#20272d; }
+  #brujula-dashboard-review .bdr-action-primary { background:var(--bd-lime); color:var(--bd-bg); border-color:var(--bd-lime); }
+  #brujula-dashboard-review .bdr-action-primary:hover { background:#e0ee7c; }
+  #brujula-dashboard-review .bdr-action:disabled { opacity:.45; }
+  #brujula-dashboard-review .bdr-feedback { border-top:1px solid var(--bd-line); display:flex; justify-content:space-between; align-items:center; gap:20px; margin-top:24px; padding-top:21px; }
+  #brujula-dashboard-review .bdr-feedback p { color:var(--bd-muted); font-size:11px; margin:5px 0 0; }
+  #brujula-dashboard-review .bdr-text-button { display:inline-flex; align-items:center; gap:5px; font:inherit; font-size:12px; color:var(--bd-lime); background:transparent; border:0; padding:8px 0; text-align:left; }
+  #brujula-dashboard-review .bdr-back { display:inline-flex; align-items:center; gap:7px; border:0; background:transparent; color:var(--bd-muted); font:inherit; font-size:12px; padding:0 0 20px; }
+  #brujula-dashboard-review .bdr-back:hover { color:var(--bd-lime); }
+  #brujula-dashboard-review .bdr-career-hero { padding:3px 0 23px; }
+  #brujula-dashboard-review .bdr-career-level { margin:0; font-size:13px; color:var(--bd-muted); }
+  #brujula-dashboard-review .bdr-description>p { color:var(--bd-muted); font-size:13px; line-height:1.7; margin:12px 0 0; }
+  #brujula-dashboard-review .bdr-study { margin-top:18px; padding-top:15px; border-top:1px solid var(--bd-line); }
+  #brujula-dashboard-review .bdr-study>span { color:var(--bd-fg); font-size:11px; }
+  #brujula-dashboard-review .bdr-study>p { color:var(--bd-muted); font-size:12px; margin:6px 0 0; }
+  #brujula-dashboard-review .bdr-career-facts { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; margin:16px 0; }
+  #brujula-dashboard-review .bdr-salary { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin-top:15px; }
+  #brujula-dashboard-review .bdr-salary strong { font-size:32px; font-weight:500; letter-spacing:-1px; }
+  #brujula-dashboard-review .bdr-salary>span { color:var(--bd-muted); font-size:11px; }
+  #brujula-dashboard-review .bdr-salary-range { margin:5px 0 15px; color:var(--bd-fg); font-size:12px; }
+  #brujula-dashboard-review .bdr-data-note { color:var(--bd-muted); font-size:11px; line-height:1.6; margin:6px 0 0; }
+  #brujula-dashboard-review .bdr-employment-state { margin:14px 0; font-size:17px; color:var(--bd-fg); }
+  #brujula-dashboard-review .bdr-employment-rate { color:var(--bd-lime); font-size:30px; font-weight:500; font-variant-numeric:tabular-nums; line-height:1.2; margin:12px 0 5px; }
+  #brujula-dashboard-review .bdr-employment-name { margin:4px 0; font-size:13px; }
+  #brujula-dashboard-review .bdr-data-source { color:var(--bd-lime); text-underline-offset:2px; }
+  #brujula-dashboard-review .bdr-occupation-context { margin:12px 0; padding-top:11px; border-top:1px solid var(--bd-line); }
+  #brujula-dashboard-review .bdr-employment-explorer { margin-top:16px; }
+  #brujula-dashboard-review .bdr-employment-explorer summary { cursor:pointer; font-weight:500; font-size:15px; }
+  #brujula-dashboard-review .bdr-employment-explorer summary::marker { color:var(--bd-lime); }
+  #brujula-dashboard-review .bdr-employment-filters { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:14px 0; }
+  #brujula-dashboard-review .bdr-employment-filters label { display:grid; min-width:0; gap:4px; color:var(--bd-muted); font-size:12px; }
+  #brujula-dashboard-review .bdr-employment-filters label:last-child { grid-column:1/-1; }
+  #brujula-dashboard-review .bdr-employment-filters :is(input,select) { background:var(--bd-bg); color:var(--bd-fg); border:1px solid #46525e; border-radius:8px; min-width:0; width:100%; min-height:42px; padding:7px 10px; font:inherit; font-size:16px; }
+  #brujula-dashboard-review .bdr-related-list { margin-top:7px; }
+  #brujula-dashboard-review .bdr-other-careers { padding-bottom:9px; }
+  #brujula-dashboard-review .bdr-related-list .bdr-career-link+.bdr-career-link { border-top:1px solid var(--bd-line); }
+  #brujula-dashboard-review .bdr-dialog { --bd-fg:#e8edf2; --bd-muted:#a7b2ba; --bd-lime:#d3e750; --bd-bg:#0a0c0e; --bd-line:#293139; background:#151a1f; color:var(--bd-fg); width:min(430px,calc(100% - 32px)); border:1px solid #39434c; border-radius:18px; padding:30px; margin:auto; font:inherit; box-shadow:0 24px 90px #0008; }
+  #brujula-dashboard-review .bdr-dialog::backdrop { background:#03070cd1; backdrop-filter:blur(4px); }
+  #brujula-dashboard-review .bdr-dialog h3 { font-size:25px; line-height:1.2; margin:10px 0 12px; letter-spacing:-.5px; }
+  #brujula-dashboard-review .bdr-dialog>p { font-size:13px; color:var(--bd-muted); margin:0 0 22px; }
+  #brujula-dashboard-review .bdr-dialog-close { display:grid; place-items:center; position:absolute; top:13px; right:13px; width:32px; height:32px; padding:0; border:0; border-radius:8px; color:var(--bd-muted); background:transparent; font:inherit; font-size:23px; }
+  #brujula-dashboard-review .bdr-dialog-icon { color:var(--bd-lime); margin-bottom:15px; }
+  #brujula-dashboard-review .bdr-dialog label { display:block; font-size:12px; color:var(--bd-fg); margin-bottom:7px; }
+  #brujula-dashboard-review .bdr-dialog input,
+  #brujula-dashboard-review .bdr-dialog textarea { background:#0d1216; color:var(--bd-fg); font:inherit; font-size:16px; width:100%; padding:12px; border:1px solid #46525e; border-radius:9px; }
+  #brujula-dashboard-review .bdr-dialog textarea { resize:vertical; }
+  #brujula-dashboard-review .bdr-dialog input::placeholder,
+  #brujula-dashboard-review .bdr-dialog textarea::placeholder { color:#929ea8; }
+  #brujula-dashboard-review .bdr-form-note { margin:10px 0 17px; font-size:11px; color:var(--bd-muted); }
+  #brujula-dashboard-review .bdr-dialog form>.bdr-action { width:100%; }
+  #brujula-dashboard-review .bdr-dialog-actions { display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; }
+  #brujula-dashboard-review .bdr-start { padding:65px 0; max-width:550px; }
+  #brujula-dashboard-review .bdr-start>p:not(.bdr-eyebrow) { color:var(--bd-muted); margin-bottom:24px; }
+  #brujula-dashboard-review .bdr-view.bdr-enter { animation:bdr-appear .2s ease-out 1; }
+  #brujula-dashboard-review .bdr-view.bdr-leave { opacity:0; transform:translateY(-5px); transition:opacity .12s ease,transform .12s ease; }
+  @keyframes bdr-appear { from { opacity:0; transform:translateY(7px); } to { opacity:1; transform:translateY(0); } }
+  @media(max-width:620px) {
+    #brujula-dashboard-review .bdr-header { padding:18px 18px; }
+    #brujula-dashboard-review .bdr-main { padding:22px 18px; }
+    #brujula-dashboard-review h2 { font-size:27px; }
+    #brujula-dashboard-review .bdr-profile-grid,
+    #brujula-dashboard-review .bdr-career-facts { grid-template-columns:minmax(0,1fr); }
+    #brujula-dashboard-review .bdr-employment-filters { grid-template-columns:minmax(0,1fr); }
+    #brujula-dashboard-review .bdr-panel { padding:18px; }
+    #brujula-dashboard-review .bdr-recommendations { padding-bottom:4px; }
+    #brujula-dashboard-review .bdr-career-name { font-size:14px; }
+    #brujula-dashboard-review .bdr-detail-link { font-size:11px; }
+    #brujula-dashboard-review .bdr-detail-link i { display:none; }
+    #brujula-dashboard-review .bdr-actions { justify-content:stretch; }
+    #brujula-dashboard-review .bdr-actions>.bdr-action { flex:1 1 100%; }
+    #brujula-dashboard-review .bdr-feedback { align-items:flex-start; flex-direction:column; gap:6px; }
+    #brujula-dashboard-review .bdr-bars { gap:17px; }
+    #brujula-dashboard-review .bdr-radar { max-width:360px; margin:0 auto; }
+    #brujula-dashboard-review .bdr-dialog { padding:26px 22px; }
+  }
+  @media(prefers-reduced-motion:reduce) { #brujula-dashboard-review .bdr-view { transition:none!important; animation:none!important; transform:none!important; } }
+  @media print {
+    #brujula-dashboard-review .bdr-header-note,
+    #brujula-dashboard-review .bdr-actions,
+    #brujula-dashboard-review .bdr-feedback,
+    #brujula-dashboard-review .bdr-dialog,
+    #brujula-dashboard-review .bdr-detail-link { display:none!important; }
+    #brujula-dashboard-review .bdr-app { --bd-bg:#fff; --bd-fg:#111; --bd-panel:#fff; --bd-muted:#555; --bd-line:#ddd; --bd-track:#ddd; --bd-lime:#47551b; print-color-adjust:exact; }
+  }
+#brujula-dashboard-review .bdr-app{min-height:100dvh;border-radius:0}#brujula-dashboard-review .bdr-wordmark{text-decoration:none}#brujula-dashboard-review h1{font-size:32px;font-weight:500;line-height:1.18;letter-spacing:-.8px;margin:0 0 10px;overflow-wrap:anywhere}#brujula-dashboard-review h2{font-size:15px;font-weight:500;line-height:1.35;letter-spacing:0;margin:0}#brujula-dashboard-review .career-title{font-size:40px}#brujula-dashboard-review .bdr-bar-label{font-size:13px}#brujula-dashboard-review .bdr-bars{gap:19px}#brujula-dashboard-review .bdr-bar{height:5px}#brujula-dashboard-review .bdr-radar svg{min-height:245px}#brujula-dashboard-review .catalog-notice{font-size:11px;line-height:1.7;color:#97a4ae;margin:11px 2px 0;max-width:720px}#brujula-dashboard-review .institution-list{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:5px;color:var(--bd-muted);font-size:11px;line-height:1.6}#brujula-dashboard-review .bdr-description>p{font-size:14px}#brujula-dashboard-review .bdr-description>h2{margin-bottom:10px}#brujula-dashboard-review .pdf-error{color:#edaca5;font-size:12px;text-align:right;margin-top:12px}#brujula-dashboard-review .bdr-dialog p{font-size:13px;line-height:1.7;color:var(--bd-muted)}#brujula-dashboard-review .bdr-dialog .bdr-dialog-close{align-items:center;justify-content:center}#brujula-dashboard-review .bdr-header{padding-left:max(24px,calc((100vw - 896px)/2));padding-right:max(24px,calc((100vw - 896px)/2))}#brujula-dashboard-review .bdr-actions>.bdr-action{flex:0 0 170px;min-height:44px}#brujula-dashboard-review .bdr-feedback{margin-bottom:15px}
+@media(max-width:620px){#brujula-dashboard-review h1{font-size:28px}#brujula-dashboard-review .career-title{font-size:33px}#brujula-dashboard-review .bdr-actions>.bdr-action{flex:1 1 100%}#brujula-dashboard-review .bdr-panel-heading>span{white-space:normal;text-align:right;max-width:85px}#brujula-dashboard-review .bdr-dialog-actions{flex-direction:column}#brujula-dashboard-review .bdr-header-note{font-size:10px}}

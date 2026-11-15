@@ -1,0 +1,2268 @@
+/**
+ * @quill/types — the typed contract shared by the API and the web app.
+ * Zod schemas are the single source of truth: the API re-validates every
+ * request against them, and the web forms derive their client-side validation
+ * from the same schema (never trust the client; validate on both sides).
+ */
+import { z } from 'zod';
+import {
+  CONDITION_OPS,
+  FORM_BACKGROUND_STYLES,
+  FORM_BADGE_SIZES,
+  FORM_BANNER_SCOPES,
+  FORM_BANNER_SIZES,
+  FORM_BUTTON_STYLES,
+  FORM_CLIENT_LOGO_SCOPES,
+  FORM_CONTENT_ALIGNS,
+  FORM_CONTENT_WIDTHS,
+  FORM_FIELD_TYPES,
+  FORM_FONTS,
+  FORM_LAYOUTS,
+  FORM_LOGO_POSITIONS,
+  FORM_LOGO_SIZES,
+  FORM_OPTION_LAYOUTS,
+  FORM_PROGRESS_STYLES,
+  FORM_RADII,
+  FORM_REVEAL_LOADERS,
+  FORM_REVEAL_SIZES,
+  FORM_TRANSITIONS,
+  isImageIcon,
+  isSafeHttpUrl,
+  isSafeImageUrl,
+} from '@quill/engine';
+import { submissionVisitSchema, submissionVisitViewSchema } from './submission-visit';
+
+export * from './submission-visit';
+
+/** A URL rendered into `<img src>` — reject script protocols (XSS defense-in-depth). */
+const safeImageUrl = z
+  .string()
+  .max(2048)
+  .refine(isSafeImageUrl, { message: 'Image URL protocol not allowed.' });
+
+// --- Identity enums (kept from the platform, portable across SQLite & PG) ----
+
+export const membershipRole = ['member', 'admin', 'owner'] as const;
+export type MembershipRole = (typeof membershipRole)[number];
+
+/**
+ * Account-level role (on `member`). `owner` administers the whole workspace
+ * (+ transfer/delete), `admin` manages members and everyone's resources,
+ * `member` is staff scoped to their own resources.
+ */
+export const accountRole = ['owner', 'admin', 'member'] as const;
+export type AccountRole = (typeof accountRole)[number];
+
+/** Member lifecycle within a workspace. */
+export const memberStatus = ['active', 'invited', 'disabled'] as const;
+export type MemberStatus = (typeof memberStatus)[number];
+
+// --- Form field kinds --------------------------------------------------------
+
+/** The step/field kinds a form may ask (mirrors @quill/engine FORM_FIELD_TYPES). */
+export const formFieldType = FORM_FIELD_TYPES;
+export type FormFieldType = (typeof formFieldType)[number];
+
+// --- Form config (versioned JSON blob that drives the whole public flow) ------
+
+const optionSchema = z.object({
+  label: z.string().min(1).max(200),
+  value: z.string().min(1).max(200),
+  points: z.number().int().optional(),
+  /**
+   * An emoji/short glyph OR an image URL. The cap is generous enough for a real
+   * CDN URL (it was 64 — emoji-sized — before images were an option), and any
+   * value that LOOKS like an image must also be a safe one, so a hostile config
+   * cannot reach the renderer's `<img src>` with a script protocol.
+   */
+  icon: z
+    .string()
+    .max(512)
+    .refine((v) => !isImageIcon(v) || isSafeImageUrl(v), {
+      message: 'Icon image URL protocol not allowed.',
+    })
+    .nullable()
+    .optional(),
+});
+
+/**
+ * Visibility-condition operators (mirrors the engine's `CONDITION_OPS`). Absent
+ * on a stored condition = `in`, so every pre-operator config still parses.
+ */
+export const conditionOp = z.enum(CONDITION_OPS);
+export type ConditionOp = z.infer<typeof conditionOp>;
+
+/**
+ * A show/hide condition. ADDITIVE, back-compat: `op`/`value`/`min`/`max` are all
+ * optional and a bare `{field, values}` keeps its original `in` ("matches any
+ * of") meaning. `values` is optional (numeric ops eq/gt/lt/between omit it); the
+ * engine's `conditionHolds` treats an absent `values` as an empty match. Kept
+ * optional (not `.default([])`) so the inferred type matches the engine's
+ * `StepCondition.values?: string[]` — otherwise FormConfig fails to assign.
+ */
+const conditionSchema = z.object({
+  field: z.string().min(1),
+  values: z.array(z.string()).optional(),
+  /** Comparison operator; absent = `in`. Numeric ops apply to slider/number fields. */
+  op: conditionOp.optional(),
+  /** Operand for `eq` / `gt` / `lt`. */
+  value: z.number().optional(),
+  /** Lower bound for `between` (inclusive). */
+  min: z.number().optional(),
+  /** Upper bound for `between` (inclusive). */
+  max: z.number().optional(),
+});
+
+/**
+ * A forward branching rule (additive, back-compat): when the owning step's
+ * answer intersects `values`, jump to `target` (a step key) or skip to the end
+ * (`target: null`). The engine only honors forward jumps, so a config can never
+ * loop; unknown/backward targets are ignored at runtime.
+ */
+const gotoRuleSchema = z.object({
+  values: z.array(z.string()).min(1),
+  target: z.string().min(1).max(64).nullable(),
+});
+
+const sliderScoringSchema = z.object({
+  min: z.number(),
+  max: z.number(),
+  points: z.number().int(),
+});
+
+const clientLogoSchema = z.object({
+  name: z.string().min(1).max(80),
+  src: safeImageUrl.nullable().optional(),
+});
+
+/**
+ * A CSS color value flowing into an inline custom property (`--pf-primary`,
+ * `--pf-banner-bg`, …) on the public renderer. Constrain the format (hex /
+ * rgb(a) / hsl(a) / named) so a value like `red;} body{...` can't break out of
+ * the color context — CSS-injection defense-in-depth on top of the 32-char cap
+ * (L2).
+ *
+ * Declared here, above the first schema that uses it: these are plain `const`
+ * bindings evaluated top-to-bottom at module load, so a schema built before
+ * this line would hit the temporal dead zone.
+ */
+const cssColor = z
+  .string()
+  .max(32)
+  .refine(
+    (v) =>
+      /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(v) ||
+      /^(?:rgb|rgba|hsl|hsla)\([0-9.,%\s/-]+\)$/.test(v) ||
+      /^[a-zA-Z]+$/.test(v),
+    { message: 'Color must be a hex, rgb(a)/hsl(a), or named CSS color.' },
+  );
+
+export const formRevealSchema = z.object({
+  enabled: z.boolean().optional(),
+  headline: z.string().max(300).nullable().optional(),
+  subtitle: z.string().max(500).nullable().optional(),
+  // --- Reveal extensions (all optional; back-compat) -------------------------
+  /** How long the processing interstitial plays before the result (ms). */
+  durationMs: z.number().int().min(500).max(30_000).optional(),
+  /** Outcome subtitle template; `[key]` tokens interpolate from the answers. */
+  subtitleTemplate: z.string().max(200).nullable().optional(),
+  /** Pre-warm the booking embed while the interstitial plays. */
+  prewarm: z.boolean().optional(),
+  /**
+   * Presentation (ADDITIVE — all optional). Absent on every axis resolves to
+   * the historical spinner-over-a-bar look, so a stored reveal keeps rendering
+   * exactly as it does today. See `resolveRevealPresentation` in @quill/engine.
+   */
+  loader: z.enum(FORM_REVEAL_LOADERS).optional(),
+  loaderSize: z.enum(FORM_REVEAL_SIZES).optional(),
+  textSize: z.enum(FORM_REVEAL_SIZES).optional(),
+  accentBackground: z.boolean().optional(),
+  /** `versus` only — the two marks' labels. Absent falls back to localized copy. */
+  versusYouLabel: z.string().max(40).nullable().optional(),
+  versusMatchLabel: z.string().max(40).nullable().optional(),
+  /** `versus` only — the live status line under the match. `''` removes it. */
+  versusStatusLabel: z.string().max(40).nullable().optional(),
+});
+
+/**
+ * A `scheduler` step embeds a booking page (Calendly in v1; the embed also
+ * supports HubSpot Meetings) mid-form. The respondent picks a slot inline and,
+ * when they book, the step is answered — so a required scheduler blocks
+ * "Continue" until a booking is made, and logic can route "on booking → submit"
+ * exactly like any other step. All fields optional/additive (back-compat).
+ */
+export const formSchedulerSchema = z.object({
+  /** Scheduling provider. v1 ships Calendly; the embed also supports HubSpot Meetings. */
+  provider: z.enum(['calendly', 'hubspot_meetings']).optional(),
+  /** The picked Calendly event type's stable URI (used by the builder's picker). */
+  eventTypeUri: z.string().max(500).nullable().optional(),
+  /** Its display name, stored so the builder can label it without a lookup. */
+  eventTypeName: z.string().max(200).nullable().optional(),
+  /** The public scheduling page embedded in the form (the event type's scheduling_url). */
+  url: z
+    .string()
+    .url()
+    .refine(isSafeHttpUrl, { message: 'scheduler url must use http(s).' })
+    .nullable()
+    .optional(),
+  /** Hide the event-type details panel in the embed ("Show event details? → No"). */
+  hideEventDetails: z.boolean().optional(),
+  /** Prefill the booking form from collected answers (name/email/phone). */
+  prefill: z.boolean().optional(),
+  /**
+   * Which earlier question feeds each field the booking page asks for, keyed by
+   * Calendly's own prefill id: `name`, `email`, or `a1`/`a2`/… for the event
+   * type's custom questions (`phone` is still accepted from earlier configs and
+   * routes to the legacy a1 slot). Values are step keys; absent entries fall
+   * back to the conventional answer keys, so a form already using
+   * firstname/lastname/email needs no mapping at all.
+   */
+  prefillMap: z.record(z.string().max(64), z.string().max(64).nullable()).optional(),
+});
+
+export const formStepSchema = z.object({
+  key: z.string().min(1).max(64),
+  type: z.enum(formFieldType),
+  question: z.string().max(500).optional(),
+  helper: z.string().max(1000).nullable().optional(),
+  placeholder: z.string().max(200).nullable().optional(),
+  required: z.boolean().optional(),
+  buttonText: z.string().max(80).nullable().optional(),
+  options: z.array(optionSchema).optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  step: z.number().optional(),
+  default: z.number().optional(),
+  sliderScoring: z.array(sliderScoringSchema).optional(),
+  showWhen: conditionSchema.nullable().optional(),
+  hideWhen: conditionSchema.nullable().optional(),
+  /** Forward branching rules on this step's answer (jump to a step / skip to end). */
+  goto: z.array(gotoRuleSchema).optional(),
+  /** Choice select mode (`multiple_choice` only): 'multiple' = checkboxes, else single. */
+  selectionMode: z.enum(['single', 'multiple']).optional(),
+  points: z.number().int().optional(),
+  flowGroup: z.enum(['qualification', 'lead_capture']).optional(),
+  corporateEmailOnly: z.boolean().optional(),
+  phoneMinDigits: z.number().int().positive().optional(),
+  /** `textarea` step: shortest answer accepted, in characters. Absent = no floor. */
+  minChars: z.number().int().positive().max(10000).optional(),
+  /** `textarea` step: longest answer accepted, in characters. Absent = no ceiling. */
+  maxChars: z.number().int().positive().max(10000).optional(),
+  /** `file` step: extensions the owner accepts, lowercase, no dot. Absent = the deployment's own list. */
+  allowedTypes: z.array(z.string().min(1).max(12)).max(40).optional(),
+  /** `file` step: the owner's size limit in MB, clamped down to UPLOAD_MAX_FILE_MB server-side. */
+  maxSizeMb: z.number().int().positive().max(1024).optional(),
+  // --- Builder + runtime extensions (all optional; back-compat) -------------
+  /** Dynamic question: pick the text from the answer to this earlier field. */
+  questionField: z.string().min(1).max(64).nullable().optional(),
+  /** value → question text (a `*` key is the fallback); `[field]` interpolated. */
+  questionVariants: z.record(z.string(), z.string().max(500)).optional(),
+  fields: z.array(z.string().min(1).max(64)).max(4).optional(),
+  placeholders: z.record(z.string(), z.string().max(200)).optional(),
+  sliderLabelVariants: z.record(z.string(), z.string().max(80)).optional(),
+  sliderUnitLabel: z.string().max(80).nullable().optional(),
+  /** ADDITIVE. Absent falls back to `showIcons` — see `resolveOptionLayout`. */
+  optionLayout: z.enum(FORM_OPTION_LAYOUTS).optional(),
+  /** @deprecated Superseded by `optionLayout`; still read as the fallback. */
+  showIcons: z.boolean().optional(),
+  showForPersonalEmailOnly: z.boolean().optional(),
+  terminal: z.boolean().optional(),
+  triggersReveal: z.boolean().optional(),
+  /**
+   * Hidden step (ADDITIVE): never rendered as a visible question — the engine's
+   * `visibleSteps` skips it — but its answer can be supplied via a matching URL
+   * parameter and carried into the submission. Not shown for `message` steps.
+   */
+  hidden: z.boolean().optional(),
+  /** Seeds the answer when neither the URL nor the person supplied one. */
+  defaultValue: z.string().max(512).optional(),
+  /**
+   * Screen group (ADDITIVE). Consecutive steps sharing this id show on ONE
+   * screen in the slides layout, with one button. Absent (every config saved
+   * before screens existed) = the step has a screen of its own. Ignored on
+   * one page. Unrelated to `flowGroup`, which is the scoring phase. Listed
+   * here because zod strips unknown keys on save: without it an author would
+   * silently lose their screens. See `screenIds` in @quill/engine.
+   */
+  screenGroup: z.string().min(1).max(64).optional(),
+  /**
+   * `phone` step: ISO 3166-1 alpha-2 the public country picker defaults to
+   * (e.g. "CO"). ADDITIVE — absent = the locale-based default. Two-char cap so a
+   * bad value can only fall back, never break the lookup.
+   */
+  phoneDefaultCountry: z.string().max(2).nullable().optional(),
+  /**
+   * Per-question scoring switch (ADDITIVE — V5-B2). `false` excludes this step
+   * from `computeScore` while the rest of the form still scores; absent/`true`
+   * is the historical behavior, so every stored config keeps its score. The
+   * form-level `scoring.enabled` still wins: off means nothing scores.
+   */
+  scoringEnabled: z.boolean().optional(),
+  /**
+   * `reveal` step: its own headline / subtitle / duration (ADDITIVE — V5-B3).
+   * The legacy `config.reveal` + `config.revealAfterStep` pair still works and
+   * still describes the form's single interstitial; a `reveal` STEP is the way
+   * to have several, positioned by where it sits in `steps`.
+   */
+  reveal: formRevealSchema.nullable().optional(),
+  /**
+   * `scheduler` step: the embedded booking config (ADDITIVE — V6). Provider +
+   * event-type scheduling URL + prefill/display options. See formSchedulerSchema.
+   */
+  scheduler: formSchedulerSchema.nullable().optional(),
+}).superRefine((stepValue, ctx) => {
+  // A floor above the ceiling describes a question nobody can answer. The
+  // editor already refuses to write the pair; this is the gate for anything
+  // that reaches the API by another road (import, a hand-written PUT).
+  const { minChars, maxChars } = stepValue;
+  if (minChars != null && maxChars != null && minChars > maxChars) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['maxChars'],
+      message: 'maxChars must be greater than or equal to minChars.',
+    });
+  }
+});
+export type FormStepInput = z.infer<typeof formStepSchema>;
+
+export const formCoverSchema = z.object({
+  enabled: z.boolean().optional(),
+  /** A sticky banner line shown above the form — scoped by `bannerScope`. */
+  bannerText: z.string().max(200).nullable().optional(),
+  /**
+   * Where `bannerText` renders (ADDITIVE): `'cover'` confines it to the cover
+   * screen; absent — every legacy config — keeps it above every screen.
+   */
+  bannerScope: z.enum(FORM_BANNER_SCOPES).optional(),
+  /**
+   * The banner strip's own look (ADDITIVE). Absent on any axis keeps the
+   * derived tint + padding the stylesheet has always applied, so no published
+   * form's banner changes by upgrading.
+   */
+  bannerColor: cssColor.nullable().optional(),
+  bannerTextColor: cssColor.nullable().optional(),
+  bannerSize: z.enum(FORM_BANNER_SIZES).optional(),
+  eyebrow: z.string().max(200).nullable().optional(),
+  badge: z.string().max(200).nullable().optional(),
+  headline: z.string().max(300).nullable().optional(),
+  subheadline: z.string().max(500).nullable().optional(),
+  ctaText: z.string().max(80).nullable().optional(),
+  trustBadge: z.string().max(200).nullable().optional(),
+  logo: safeImageUrl.nullable().optional(),
+  clientLogos: z.array(clientLogoSchema).max(24).optional(),
+  /**
+   * Whether the "trusted by" marquee renders (ADDITIVE). Absent — every legacy
+   * config — means shown, so switching it off never deletes the logos.
+   */
+  showClientLogos: z.boolean().optional(),
+  /**
+   * WHICH surfaces the marquee renders on (ADDITIVE): the cover alone (absent —
+   * every legacy config, and where it has always rendered), the reveal
+   * interstitial alone, or both.
+   */
+  clientLogosScope: z.enum(FORM_CLIENT_LOGO_SCOPES).optional(),
+});
+
+/**
+ * An author-supplied typeface. This repo has no asset storage, so the source is
+ * a URL the deployment fetches — the same shape every other image in the config
+ * takes. Restricted to http(s) because it becomes an `@font-face src`.
+ */
+export const customFontSchema = z.object({
+  name: z.string().min(1).max(64),
+  url: z
+    .string()
+    .max(2048)
+    .refine(isSafeHttpUrl, { message: 'Font URL must use http(s).' }),
+});
+
+/**
+ * Per-form branding + design. Everything beyond the original three fields is
+ * OPTIONAL and resolves, when absent, to the pre-design look (`resolveDesign` /
+ * `formThemeVars`) — config invariant #4: extend v1, never break it. A form
+ * published before any of this existed must keep parsing and keep rendering
+ * identically, which is what the engine's legacy-default tests pin down.
+ */
+export const formBrandingSchema = z.object({
+  primaryColor: cssColor.nullable().optional(),
+  logo: safeImageUrl.nullable().optional(),
+  clientLogos: z.array(clientLogoSchema).max(24).optional(),
+
+  // Color. Setting `background` locks the form's light/dark theme.
+  background: cssColor.nullable().optional(),
+  foreground: cssColor.nullable().optional(),
+  backgroundStyle: z.enum(FORM_BACKGROUND_STYLES).optional(),
+  backgroundImage: safeImageUrl.nullable().optional(),
+  backgroundOverlay: z.number().min(0).max(100).optional(),
+
+  // Typography.
+  fontFamily: z.enum(FORM_FONTS).optional(),
+  customFont: customFontSchema.nullable().optional(),
+
+  // Shape & controls.
+  radius: z.enum(FORM_RADII).optional(),
+  buttonStyle: z.enum(FORM_BUTTON_STYLES).optional(),
+  buttonFullWidth: z.boolean().optional(),
+  progressStyle: z.enum(FORM_PROGRESS_STYLES).optional(),
+
+  // Layout.
+  logoSize: z.enum(FORM_LOGO_SIZES).optional(),
+  logoPosition: z.enum(FORM_LOGO_POSITIONS).optional(),
+  badgeSize: z.enum(FORM_BADGE_SIZES).optional(),
+  contentAlign: z.enum(FORM_CONTENT_ALIGNS).optional(),
+  contentWidth: z.enum(FORM_CONTENT_WIDTHS).optional(),
+  transition: z.enum(FORM_TRANSITIONS).optional(),
+
+  /** Editor bookkeeping — which preset was last applied. Never read at render. */
+  themePreset: z.string().max(32).nullable().optional(),
+  /** Social-share card. Absent = generated from the branding above. */
+  ogImage: safeImageUrl.nullable().optional(),
+});
+
+// --- Workspace brand kit ------------------------------------------------------
+
+/**
+ * The branding fields a workspace brand kit carries — the identity subset of
+ * `formBrandingSchema` (logo, client logos, the three colors, typography, shape,
+ * button style). Per-form presentation fields (cover copy, layout, background
+ * image, ogImage, …) deliberately stay per-form. This list is the single source
+ * of truth for what an "apply" overwrites on a form's `config.branding` — keep
+ * it in sync with `brandKitSchema` below.
+ */
+export const BRAND_KIT_FIELDS = [
+  'logo',
+  'clientLogos',
+  'primaryColor',
+  'background',
+  'foreground',
+  'fontFamily',
+  'customFont',
+  'radius',
+  'buttonStyle',
+] as const;
+export type BrandKitField = (typeof BRAND_KIT_FIELDS)[number];
+
+/**
+ * A workspace's brand kit (stored per account, `account_branding.config`).
+ * Forms SNAPSHOT it — merged into `config.branding` at creation and on an
+ * explicit apply — so the engine, public renderer, and og-image pipeline never
+ * see anything but a plain per-form branding object. Every field is optional:
+ * absent means "the kit does not set this axis" and the form keeps its own
+ * value (or the platform default).
+ */
+export const brandKitSchema = z.object({
+  logo: safeImageUrl.nullable().optional(),
+  clientLogos: z.array(clientLogoSchema).max(24).optional(),
+  primaryColor: cssColor.nullable().optional(),
+  /** Setting `background` locks the light/dark theme of forms it is applied to. */
+  background: cssColor.nullable().optional(),
+  foreground: cssColor.nullable().optional(),
+  fontFamily: z.enum(FORM_FONTS).optional(),
+  customFont: customFontSchema.nullable().optional(),
+  radius: z.enum(FORM_RADII).optional(),
+  buttonStyle: z.enum(FORM_BUTTON_STYLES).optional(),
+});
+export type BrandKit = z.infer<typeof brandKitSchema>;
+
+// --- Outcome extensions (booking + answer-forced overrides) ------------------
+
+/** Scheduling providers an outcome can hand off to after the form completes. */
+export const bookingProvider = ['hubspot_meetings', 'calendly'] as const;
+export type BookingProvider = (typeof bookingProvider)[number];
+
+/**
+ * Scheduling handoff for an outcome: the renderer embeds/links the provider's
+ * booking page after this outcome resolves. Same http(s)-only guard as
+ * `redirectUrl` — the URL flows into navigation/an embed (XSS defense-in-depth).
+ */
+export const outcomeBookingSchema = z.object({
+  provider: z.enum(bookingProvider),
+  url: z
+    .string()
+    .url()
+    .refine(isSafeHttpUrl, { message: 'booking url must use http(s).' }),
+  /** Prefill the booking form from collected answers (name/email). */
+  prefill: z.boolean().optional(),
+});
+export type OutcomeBooking = z.infer<typeof outcomeBookingSchema>;
+
+/**
+ * An answer-forced outcome rule: when the answer to `field` matches, this
+ * outcome wins REGARDLESS of score (e.g. a slider answer <= 0 forces the P0
+ * outcome). All specified clauses must hold; at least one clause is required.
+ */
+export const outcomeOverrideSchema = z
+  .object({
+    field: z.string().min(1).max(64),
+    /** Match when the (string/array) answer intersects these values. */
+    values: z.array(z.string().max(200)).optional(),
+    /** Match when the numeric answer is <= this bound. */
+    maxValue: z.number().optional(),
+    /** Match when the numeric answer is >= this bound. */
+    minValue: z.number().optional(),
+  })
+  .refine((r) => r.values !== undefined || r.maxValue !== undefined || r.minValue !== undefined, {
+    message: 'An override rule needs values, maxValue, or minValue.',
+  });
+export type OutcomeOverride = z.infer<typeof outcomeOverrideSchema>;
+
+export const formOutcomeSchema = z.object({
+  id: z.string().min(1).max(64),
+  // Empty label is allowed: the builder creates a range before the user names it,
+  // and the renderer/ScoreBar fall back to `#<n>`. Relaxing min(1) is a superset
+  // (every previously-valid config still parses) and keeps autosave from 400-ing
+  // the moment "Add a range" is clicked.
+  label: z.string().max(200),
+  minScore: z.number().int().optional(),
+  /**
+   * Upper bound of this range, INCLUSIVE (ADDITIVE). Absent = the range runs
+   * open-ended upwards, which is what every stored config does today: ranges
+   * used to be implicit, each one ending wherever the next one began, so a
+   * config could only be read by looking at its neighbours. Authors could not
+   * type a range, only the number it started at, and the span they actually got
+   * was printed back at them from somewhere else on the row.
+   *
+   * `resolveOutcome` reads this bound and NOT a derived one, so a config
+   * carrying no `maxScore` resolves exactly as it did before this field existed.
+   * The last range is meant to stay absent — a score above every bound must
+   * still land somewhere.
+   */
+  maxScore: z.number().int().optional(),
+  // http(s) only: the renderer navigates here (`window.location`), so a
+  // `javascript:`/`data:` URL — which `.url()` alone would accept — is a stored
+  // XSS vector. Guarded again at the sink in the renderer (belt-and-braces).
+  redirectUrl: z
+    .string()
+    .url()
+    .refine(isSafeHttpUrl, { message: 'redirectUrl must use http(s).' })
+    .nullable()
+    .optional(),
+  // --- Outcome extensions (all optional; back-compat) ------------------------
+  /**
+   * Per-outcome thank-you body (V4-16). Rendered as the done-screen body when
+   * set (falling back to the shared thank-you body); `label` stays the heading.
+   * Plain text with `[field]` tokens interpolated by the renderer.
+   */
+  message: z.string().max(2000).nullable().optional(),
+  /** Scheduling handoff (HubSpot Meetings / Calendly) shown for this outcome. */
+  booking: outcomeBookingSchema.nullable().optional(),
+  /**
+   * Hold the thank-you screen this long before this outcome's redirect fires
+   * (ADDITIVE — V5-B1). Absent = 0 when this outcome has its own
+   * `redirectUrl`; the form-level ending's delay is inherited only when the
+   * URL is inherited too — the delay belongs to the URL pairing (the engine's
+   * `resolveEnding` is the resolver).
+   */
+  redirectDelayMs: z.number().int().min(0).max(60_000).optional(),
+  /**
+   * Answer-forced rules: when ANY rule matches the answers, this outcome wins
+   * over score bucketing (outcomes are scanned in declared order).
+   */
+  overrides: z.array(outcomeOverrideSchema).optional(),
+});
+
+// --- Submission destinations (pluggable CRM / webhook sync) ------------------
+
+/** The configurable destination kinds a form may deliver submissions to. */
+export const destinationType = ['webhook', 'hubspot'] as const;
+export type DestinationType = (typeof destinationType)[number];
+
+/** A property map: form stepKey / utmKey -> external property name. */
+const propertyMapSchema = z.record(z.string().min(1).max(200), z.string().min(1).max(200));
+
+/**
+ * What ONE answer writes to: a property, or several.
+ *
+ * A single string was the shape for a long time and stays valid, so every
+ * stored config keeps parsing. The array exists because one answer legitimately
+ * feeds more than one CRM property — a use-case field that a reporting property
+ * mirrors, say — and a record keyed by step key can only hold one value per
+ * key, so the workaround was a SECOND destination. That second destination is
+ * invisible to the integrations screen (it reads the first) and is never
+ * delivered by the booking sync (same), which made it config that looks correct
+ * in an audit and writes nothing.
+ */
+const propertyTargetsSchema = z.union([
+  z.string().min(1).max(200),
+  z.array(z.string().min(1).max(200)).min(1).max(20),
+]);
+
+/** stepKey -> one property or several. Read it through {@link propertiesFor}. */
+const fieldMapSchema = z.record(z.string().min(1).max(200), propertyTargetsSchema);
+
+/**
+ * The properties one mapping targets, as a list — the single reader for both
+ * stored shapes, so no call site has to remember that a string is also valid.
+ * Blank entries are dropped, so a half-typed row never writes an empty property.
+ */
+export function propertiesFor(target: string | string[] | undefined | null): string[] {
+  if (target == null) return [];
+  const list = Array.isArray(target) ? target : [target];
+  return list.map((p) => p.trim()).filter((p) => p.length > 0);
+}
+
+/**
+ * Webhook destination — POST each submission as JSON to a URL, optionally HMAC
+ * signed. The secret is server-side config, never leaked to the public renderer
+ * (the API strips `destinations` before serving a public form).
+ */
+export const webhookDestinationSchema = z.object({
+  type: z.literal('webhook'),
+  /**
+   * Stable per-destination id (additive). Minted on first save and round-tripped
+   * by the admin UI so `mergeWebhookSecrets` can match a masked-secret write to
+   * its stored counterpart by IDENTITY, not array position — correct even when
+   * multiple webhooks are reordered or one is deleted. Optional for back-compat
+   * (legacy configs have none; the merge self-heals by minting one on save).
+   */
+  id: z.string().max(64).optional(),
+  enabled: z.boolean().default(false),
+  /**
+   * Which submission phases fire this webhook (additive; default = both).
+   * `partial` = a partial submission past the lead-capture threshold;
+   * `complete` = a finished submission. Absent/empty is treated as BOTH for
+   * back-compat with configs saved before per-event triggers existed.
+   */
+  events: z.array(z.enum(['partial', 'complete'])).optional(),
+  settings: z.object({
+    // https-only, with ONE exception: plain http for localhost/127.0.0.1 (local
+    // dev catcher). Mirrors the admin UI validation — keep the two in sync.
+    url: z
+      .string()
+      .url()
+      .refine(
+        // Already a valid URL per .url(); prefix checks avoid the URL global
+        // (not in this package's lib set).
+        (v) => v.startsWith('https://') || /^http:\/\/(localhost|127\.0\.0\.1)([:/?#]|$)/.test(v),
+        { message: 'Webhook URL must use https (plain http is allowed only for localhost).' },
+      ),
+    /** HMAC-SHA256 signing secret (optional). */
+    secret: z.string().max(500).nullable().optional(),
+    /** Header the signature is sent in (defaults to `X-Forms-Signature`). */
+    signatureHeader: z.string().max(128).nullable().optional(),
+    /** Per-request timeout in ms (defaults to 10s). */
+    timeoutMs: z.number().int().positive().max(60_000).optional(),
+  }),
+});
+export type WebhookDestination = z.infer<typeof webhookDestinationSchema>;
+
+/** Submission phases a destination can subscribe to. */
+export const destinationEvents = ['partial', 'complete'] as const;
+export type DestinationEvent = (typeof destinationEvents)[number];
+
+/**
+ * Resolve whether a destination should fire for a given phase. Absent/empty
+ * `events` = both phases (back-compat). Only webhook destinations carry an
+ * `events` filter today; others always fire (their adapters gate internally).
+ */
+export function destinationFiresForPhase(
+  destination: { type: string; events?: DestinationEvent[] | undefined },
+  phase: DestinationEvent,
+): boolean {
+  const events = destination.events;
+  if (!events || events.length === 0) return true;
+  return events.includes(phase);
+}
+
+/**
+ * HubSpot destination — upsert the respondent as a contact and (on complete)
+ * attach a Note. The private-app token is a server-side env secret
+ * (`HUBSPOT_PRIVATE_APP_TOKEN`), NOT stored in the form config.
+ */
+export const hubspotDestinationSchema = z.object({
+  type: z.literal('hubspot'),
+  enabled: z.boolean().default(false),
+  settings: z
+    .object({
+      note: z.boolean().optional(),
+      /**
+       * The MIRROR FORM in the portal that represents this Dapta form
+       * (ADDITIVE). Set = every completed submission is also posted there,
+       * which is what produces a "Form submission" activity on the contact —
+       * the one that names the form and lists the properties it set. A Note,
+       * which is all this destination could make before, does neither.
+       *
+       * Written by the API when the destination is saved, not by the author and
+       * not by the adapter: creating the form needs a HubSpot call, and
+       * recording its guid needs the database, which `@quill/destinations` does
+       * not have. Absent = no activity, and nothing else changes.
+       */
+      formGuid: z.string().max(64).nullable().optional(),
+      /**
+       * Whether to record the activity at all — the author's intent, as opposed
+       * to `formGuid`, which is what the API made for them.
+       *
+       * Kept apart so turning the switch off STOPS posting without destroying
+       * the form: its past submissions are activities on real contacts, and
+       * deleting it to represent "off" would erase history the author never
+       * asked to lose. Turning it back on reuses the same form.
+       */
+      formActivity: z.boolean().optional(),
+      /**
+       * What the mirror form was built from, so a save can tell whether it is
+       * stale without asking HubSpot. The Connect tab autosaves, and rebuilding
+       * on every keystroke would hammer the portal for nothing.
+       */
+      formSignature: z.string().max(4000).optional(),
+    })
+    .default({}),
+  /** stepKey -> contact property, or several (one SHOULD be `email` unless a
+   *  scheduler supplies the address). */
+  fieldMappings: fieldMapSchema.default({}),
+  /** utm_source/medium/campaign/term/content -> contact property. */
+  utmMappings: propertyMapSchema.default({}),
+  /** Contact property to receive the score (complete submissions). */
+  scoreProperty: z.string().max(200).nullable().optional(),
+  /** Contact date property to receive the submitted date. */
+  dateProperty: z.string().max(200).nullable().optional(),
+  /**
+   * The IANA zone that names the CALENDAR DAY whenever this destination writes
+   * to a `date`-type property (submitted date, booking date — any of them).
+   * Blank/absent = UTC, the platform default.
+   *
+   * One zone per destination, not per property: "which zone are days named in"
+   * is a single question, and two properties answering it differently would be
+   * a config error, not an intent. `datetime`-type targets never use it — they
+   * receive the exact instant and HubSpot renders it in the portal's zone.
+   *
+   * ADDITIVE. Predates `bookingSync.dateTimezone`, which covered only the
+   * booking day; readers fall back to it so stored configs keep their zone.
+   */
+  dayTimezone: z.string().max(64).optional(),
+  // --- HubSpot extensions (all optional; back-compat) ------------------------
+  /** stepKey -> (answer value -> property value): translate answers on the way out. */
+  valueMaps: z
+    .record(z.string().min(1).max(200), z.record(z.string().max(200), z.string().max(200)))
+    .optional(),
+  /** Contact property to receive the resolved outcome id/label. */
+  outcomeProperty: z.string().max(200).nullable().optional(),
+  /** Fixed property values stamped on every synced contact. */
+  staticProperties: z.record(z.string().min(1).max(200), z.string().max(500)).optional(),
+  /** Derive the company name from the respondent's email domain. */
+  inferCompanyFromEmail: z.boolean().optional(),
+  /**
+   * Booking sync — which contact properties receive the booking facts when a
+   * visitor books a meeting through a `scheduler` step (the `booking_sync`
+   * outbox flow). All optional; absent = booking sync is a no-op for this
+   * destination.
+   *  - `stageProperty` is set to `stageValue` verbatim (e.g. a sales-stage
+   *    enum internal value) — the "demo booked" stage stamp.
+   *  - `dateProperty` receives the CALENDAR DAY THE LEAD BOOKED ON as
+   *    UTC-midnight epoch-ms (HubSpot `date`-type properties require midnight
+   *    UTC). The day the booking happened, NOT the day of the meeting — the
+   *    two differ whenever someone books ahead, and this property is what
+   *    monthly "meetings booked" reporting counts by.
+   *  - `dateTimezone` is the IANA zone that day is computed in. Blank/absent =
+   *    UTC, the platform default. A portal reporting in `America/Bogota` needs
+   *    it set, or every booking from 19:00 local onwards lands on tomorrow.
+   *  - `hoursProperty` receives the exact meeting start as epoch-ms (a
+   *    HubSpot `datetime`-type property).
+   */
+  bookingSync: z
+    .object({
+      stageProperty: z.string().max(200).optional(),
+      stageValue: z.string().max(200).optional(),
+      dateProperty: z.string().max(200).optional(),
+      hoursProperty: z.string().max(200).optional(),
+      /** IANA zone the booking DAY is computed in (`dateProperty`). Blank = UTC. */
+      dateTimezone: z.string().max(64).optional(),
+    })
+    .optional(),
+});
+export type HubspotDestination = z.infer<typeof hubspotDestinationSchema>;
+
+export const formDestinationSchema = z.discriminatedUnion('type', [
+  webhookDestinationSchema,
+  hubspotDestinationSchema,
+]);
+export type FormDestination = z.infer<typeof formDestinationSchema>;
+
+/** Rejection message for a second HubSpot destination (see `hasExtraHubspotDestination`). */
+export const ONE_HUBSPOT_DESTINATION_MESSAGE =
+  'Only one HubSpot destination per form. Map several properties from the same question instead.';
+
+/** How many HubSpot entries a (loosely typed) destinations array carries. */
+function hubspotCount(destinations: unknown): number {
+  if (!Array.isArray(destinations)) return 0;
+  let n = 0;
+  for (const d of destinations) if (isRecord(d) && d.type === 'hubspot') n += 1;
+  return n;
+}
+
+/**
+ * True when a proposed destination list would ADD a HubSpot entry beyond the
+ * first — the thing no form may be authored with.
+ *
+ * The comparison against `stored` is load-bearing, not defensive. Several
+ * screens edit one field and write the WHOLE array back (the builder's
+ * per-question property picker and its field-key rename both do), so a form
+ * that already carries two round-trips two on every unrelated save. A guard on
+ * the count alone would reject those writes and make the per-question picker
+ * unusable on precisely the forms this rule exists to clean up — while telling
+ * the author to "map several properties from the same question", which is what
+ * they were doing. So the rule is: never go UP. Staying at two is allowed;
+ * Connect still collapses to one when it saves.
+ *
+ * A second HubSpot destination is a trap rather than a feature, because the
+ * three readers resolve the pair three different ways:
+ *
+ *   - the Connect screen edits the FIRST, regardless of `enabled`;
+ *   - submit delivers EVERY destination whose `enabled !== false`;
+ *   - booking resolves the FIRST ENABLED one.
+ *
+ * So the second is always invisible in the admin, and which of the two is doing
+ * anything depends on flags that screen never shows — on a disabled-first pair
+ * it is the second that runs bookings. That disagreement is why the guard below
+ * ignores `enabled` entirely. Forms carrying two were a workaround from when a
+ * field mapping was one question → one property; a mapping now fans out to
+ * several, so the workaround has no remaining use case.
+ *
+ * Deliberately NOT a `formConfigSchema` refinement: this is an AUTHORING rule,
+ * and folding it into the parse would make the stored configs of forms that
+ * already carry two stop loading — breaking reads and deliveries for exactly
+ * the forms that need fixing. Write paths call this; readers stay tolerant.
+ *
+ * Duplicating a form deliberately does NOT call this. A duplicate copies stored
+ * state rather than authoring new state, and refusing to copy a form would take
+ * the legacy forms hostage instead of fixing them — while silently dropping the
+ * extra destination would delete a delivery that IS still running at submit
+ * time. The copy therefore inherits the violation, and gets fixed the same way
+ * the original does: by opening Connect.
+ */
+export function hasExtraHubspotDestination(destinations: unknown, stored?: unknown): boolean {
+  const next = hubspotCount(destinations);
+  // One is always fine. Past that, only an INCREASE is refused — and an absent
+  // or unreadable `stored` counts as zero, so a create refuses anything over one.
+  return next > 1 && next > hubspotCount(stored);
+}
+
+/**
+ * Sentinel returned in place of a stored webhook signing secret on every ADMIN
+ * READ (GET /v1/forms/:id and the create/update/duplicate/destinations
+ * responses) so the plaintext secret never leaves the server. It doubles as the
+ * "unchanged" marker on WRITE: when the integrations UI submits this value back
+ * (the operator left the field untouched), the server keeps the stored secret —
+ * see `mergeWebhookSecrets`. Distinctive so a real secret can never collide.
+ */
+export const WEBHOOK_SECRET_MASK = '__DAPTA_FORMS_SECRET_KEEP__';
+
+/**
+ * The `action` a delivery gets when it came from the admin's "Send test" button
+ * rather than a respondent.
+ *
+ * Lives HERE, in the contract package, because both ends read it and neither can
+ * import the other's home: the API stamps it through @quill/db, and the admin —
+ * a browser bundle — reads it to badge the row. A test delivery mislabelled as a
+ * real one would have somebody debugging a submission that never happened.
+ */
+export const WEBHOOK_PING_ACTION = 'ping';
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** Isomorphic UUID (Web Crypto in Node 20+ and modern browsers) with a fallback. */
+function newDestinationId(): string {
+  const g = globalThis as unknown as { crypto?: { randomUUID?: () => string } };
+  return (
+    g.crypto?.randomUUID?.() ??
+    `wh_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+  );
+}
+
+/**
+ * Return a copy of a destinations array with every non-empty webhook signing
+ * secret replaced by `WEBHOOK_SECRET_MASK` (so a READ never exposes plaintext).
+ * Destinations with no secret are returned untouched. Defensive against loosely
+ * typed stored JSON — non-webhook / malformed entries pass through unchanged.
+ */
+export function maskDestinationSecrets(destinations: unknown): unknown {
+  if (!Array.isArray(destinations)) return destinations;
+  return destinations.map((d) => {
+    if (!isRecord(d) || d.type !== 'webhook' || !isRecord(d.settings)) return d;
+    const secret = d.settings.secret;
+    if (typeof secret === 'string' && secret.length > 0) {
+      return { ...d, settings: { ...d.settings, secret: WEBHOOK_SECRET_MASK } };
+    }
+    return d;
+  });
+}
+
+/** Return a copy of a form config with its destinations' webhook secrets masked. */
+export function maskConfigSecrets(config: unknown): unknown {
+  if (!isRecord(config) || !('destinations' in config)) return config;
+  return { ...config, destinations: maskDestinationSecrets(config.destinations) };
+}
+
+/**
+ * Merge an incoming destinations array against the currently-stored one: any
+ * webhook whose incoming secret is `WEBHOOK_SECRET_MASK` keeps the stored secret
+ * (the UI left the field untouched). A real string overwrites it; an empty
+ * string / null clears it.
+ *
+ * Matching is by STABLE ID (M3): each webhook carries an `id` (minted here on
+ * first save and round-tripped by the admin UI), so a masked-secret write is
+ * paired with its stored counterpart by identity — correct even when multiple
+ * webhooks are reordered or one is deleted. Legacy configs with no ids fall back
+ * to positional matching among webhook entries and self-heal (an id is minted
+ * and persisted on this write).
+ */
+export function mergeWebhookSecrets(incoming: unknown[], existing: unknown): unknown[] {
+  const storedWebhooks = (Array.isArray(existing) ? existing : []).filter(
+    (d): d is Record<string, unknown> => isRecord(d) && d.type === 'webhook',
+  );
+  const storedById = new Map<string, Record<string, unknown>>();
+  for (const w of storedWebhooks) {
+    if (typeof w.id === 'string' && w.id.length > 0) storedById.set(w.id, w);
+  }
+  let positional = 0; // fallback cursor for legacy (id-less) configs
+  return incoming.map((d) => {
+    if (!isRecord(d) || d.type !== 'webhook') return d;
+    const id = typeof d.id === 'string' && d.id.length > 0 ? d.id : newDestinationId();
+    const settings = isRecord(d.settings) ? d.settings : {};
+    // Prefer a stable-id match; fall back to positional for id-less legacy configs.
+    const prev =
+      (typeof d.id === 'string' ? storedById.get(d.id) : undefined) ?? storedWebhooks[positional];
+    positional += 1;
+    if (settings.secret === WEBHOOK_SECRET_MASK) {
+      const prevSecret = isRecord(prev?.settings) ? prev!.settings.secret : undefined;
+      return { ...d, id, settings: { ...settings, secret: prevSecret ?? null } };
+    }
+    return { ...d, id };
+  });
+}
+
+// --- Analytics / marketing tag ids (rendered by the public page) -------------
+
+/**
+ * Third-party tracking ids for the public form page. All optional, loosely
+ * validated strings (each vendor has its own id format; the renderer only ever
+ * interpolates them into vendor snippets, never executes them as markup).
+ */
+export const formTrackingSchema = z.object({
+  /** Google Tag Manager container id (e.g. GTM-XXXXXXX). */
+  gtmId: z.string().max(32).nullable().optional(),
+  /** Meta (Facebook) Pixel id. */
+  metaPixelId: z.string().max(32).nullable().optional(),
+  /** PostHog project API key. */
+  posthogKey: z.string().max(128).nullable().optional(),
+  /** PostHog host override (self-hosted / EU cloud). */
+  posthogHost: z
+    .string()
+    .max(256)
+    .url()
+    .refine(isSafeHttpUrl, 'must be an http(s) URL')
+    .nullable()
+    .optional(),
+  /** HubSpot tracking code portal id. */
+  hubspotTrackingId: z.string().max(32).nullable().optional(),
+});
+export type FormTracking = z.infer<typeof formTrackingSchema>;
+
+// --- Spam protection (a challenge before the final submit) -------------------
+
+/**
+ * Per-form spam protection. Absent, null or `captcha: false` is OFF, which is
+ * every config saved before this existed, so all of them keep rendering and
+ * submitting exactly as they did.
+ *
+ * `captcha` asks the respondent's browser for a human check on the FINAL submit
+ * and has the API verify it before anything is written. While it is on, a
+ * partial answer is still saved but no destination is sent it: only a verified
+ * complete submission is delivered.
+ *
+ * `strict` (ignored unless `captcha` is true) shows the check to everyone and
+ * adds two server-side checks, a hidden field and a minimum fill time.
+ *
+ * Nothing here takes effect on a deployment without challenge keys: the API is
+ * the only authority on whether the check can run at all.
+ */
+export const formSpamProtectionSchema = z.object({
+  captcha: z.boolean().optional(),
+  strict: z.boolean().optional(),
+});
+export type FormSpamProtection = z.infer<typeof formSpamProtectionSchema>;
+
+/**
+ * The challenge a public form must pass before its final submit, as the API
+ * hands it to the renderer. Present only when the deployment has keys AND the
+ * published form turned the check on; the renderer runs nothing without it.
+ * The site key is public by design (the widget cannot run without it).
+ */
+export const publicCaptchaSchema = z.object({
+  provider: z.literal('turnstile'),
+  siteKey: z.string().min(1),
+  /** Strict mode: the check is visible to everyone and a hidden field rides the submit. */
+  strict: z.boolean().optional(),
+});
+export type PublicCaptcha = z.infer<typeof publicCaptchaSchema>;
+
+/**
+ * The value the browser stamps on its challenge and the API expects back from
+ * the verifier: the session id, reduced to what the widget accepts (letters,
+ * digits, `_` and `-`, at most 255). A token minted for one session therefore
+ * cannot complete another. Both halves call this so they can never disagree.
+ */
+export function captchaCData(sessionId: string): string {
+  return sessionId.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 255);
+}
+
+/**
+ * The action the browser stamps on its challenge and the API requires back:
+ * a token minted for any other action (another form product, a login) fails.
+ */
+export const CAPTCHA_ACTION = 'submit';
+
+// --- Acquisition attribution (first touch, persisted on the account) ---------
+
+/**
+ * FIRST-TOUCH acquisition context for an account — what the browser saw the
+ * very first time this visitor arrived, on the landing or the app.
+ *
+ * The landing captures this shape and forwards it on the CTA as query
+ * parameters — in snake_case, the URL convention (`utm_source`), which
+ * `parseAttribution` below maps onto these camelCase field names. The web parks
+ * the result across the login round-trip and the API persists it to
+ * `account.attribution` (migration 0010) with a write-once claim.
+ *
+ * ONE shape for the column, deliberately: a second schema would let a writer
+ * store keys the documented reader strips, and the mismatch would be silent —
+ * `parse` returns `{}` for unknown keys rather than throwing.
+ *
+ * FIRST touch, never last: the values are written on the first visit and never
+ * overwritten, so a user who arrives from an ad, leaves, and returns via a
+ * bookmark is still credited to the ad. Every field is optional — direct
+ * traffic legitimately carries none of them, and an account that predates this
+ * feature has the whole blob NULL. Absent means "not known", never "direct";
+ * the two are told apart by `account.created_at`, not by this shape.
+ *
+ * This is UNTRUSTED input: it originates in the browser and anyone can put
+ * anything in a query string. Lengths are capped so a hostile URL cannot bloat
+ * the row, unknown keys are stripped by zod, and nothing here is ever used for
+ * authorization or rendered as markup.
+ */
+export const attributionSchema = z.object({
+  utmSource: z.string().max(128).nullable().optional(),
+  utmMedium: z.string().max(128).nullable().optional(),
+  utmCampaign: z.string().max(128).nullable().optional(),
+  utmContent: z.string().max(128).nullable().optional(),
+  utmTerm: z.string().max(128).nullable().optional(),
+  /**
+   * Paid-click ids Google and Meta append to an ad destination. They reconcile a
+   * signup with a row of ad spend when the UTM set alone is ambiguous, and the
+   * existing Dapta booking links already carry them. Longer cap: a real `fbclid`
+   * runs well past 200 characters.
+   */
+  gclid: z.string().max(512).nullable().optional(),
+  fbclid: z.string().max(512).nullable().optional(),
+  /** `document.referrer` as the browser reported it; '' (blank) is normalized to null. */
+  referrer: z.string().max(512).nullable().optional(),
+  /** Path-only entry point (never the query string — it can carry PII). */
+  landingPath: z.string().max(512).nullable().optional(),
+  /**
+   * RESERVED — epoch-ms of that first visit, as the CLIENT clock reported it.
+   * Structurally unwritable today: `ATTRIBUTION_QUERY_MAP` only carries the
+   * string-valued fields, so nothing can populate a number. Kept because the
+   * landing already computes it and a reader must keep parsing rows that have it.
+   */
+  firstSeenAt: z.number().int().nonnegative().nullable().optional(),
+});
+export type Attribution = z.infer<typeof attributionSchema>;
+
+/** The versioned config blob. `version` gates future migrations of the shape. */
+/**
+ * Form-level ending (V5-B1): the defaults an outcome may override. `redirectUrl`
+ * is http(s)-only for the same stored-XSS reason as the per-outcome one — the
+ * renderer navigates to it.
+ */
+export const formEndingSchema = z.object({
+  headline: z.string().max(200).nullable().optional(),
+  body: z.string().max(2000).nullable().optional(),
+  redirectUrl: z
+    .string()
+    .url()
+    .refine(isSafeHttpUrl, { message: 'redirectUrl must use http(s).' })
+    .nullable()
+    .optional(),
+  redirectDelayMs: z.number().int().min(0).max(60_000).optional(),
+});
+export type FormEndingInput = z.infer<typeof formEndingSchema>;
+
+/**
+ * A member's PUBLIC PAGE (`/[accountCode]/[handle]`), stored as one JSON blob on
+ * `member.profile`.
+ *
+ * The route shape has existed since the first public form URL, but nothing was
+ * ever built at the handle level — only `[handle]/[slug]` — so a handle URL was
+ * a real 404. This is the contract behind it.
+ *
+ * `enabled` defaults to FALSE and the whole column defaults to NULL, which
+ * together mean the page keeps 404-ing until someone deliberately turns it on.
+ * Publishing a page about a person as a side-effect of a schema migration would
+ * be the wrong default in every sense.
+ *
+ * Versioned like the form config, and extended the same way: add optional
+ * fields, never repurpose one.
+ */
+export const memberProfileLinkSchema = z.object({
+  label: z.string().trim().min(1).max(60),
+  url: z
+    .string()
+    .trim()
+    .max(2048)
+    .refine(isSafeHttpUrl, { message: 'Link URL must use http(s).' }),
+});
+
+/** The languages the admin UI ships. Kept here so the API, the web app and the
+ *  data layer all narrow against one list rather than three copies of it. */
+export const localeSchema = z.enum(['en', 'es']);
+export type LocaleInput = z.infer<typeof localeSchema>;
+
+/** Body of `PUT /v1/me/locale`. */
+export const memberLocaleSchema = z.object({ locale: localeSchema });
+
+export const memberProfileSchema = z.object({
+  version: z.literal(1),
+  /** Off until someone turns it on — absent/false keeps today's 404. */
+  enabled: z.boolean().default(false),
+  headline: z.string().trim().max(120).nullable().optional(),
+  bio: z.string().trim().max(600).nullable().optional(),
+  links: z.array(memberProfileLinkSchema).max(6).optional(),
+  /**
+   * Which of the member's PUBLISHED forms to list, by slug. Absent means "all
+   * of them"; an empty array means "none", and the two are deliberately
+   * different — an author who unlists everything must not get every form back.
+   */
+  formSlugs: z.array(z.string().trim().min(1).max(120)).max(50).nullable().optional(),
+  /** Reuses the form design vocabulary rather than inventing a second one. */
+  branding: formBrandingSchema.nullable().optional(),
+});
+
+export type MemberProfile = z.infer<typeof memberProfileSchema>;
+export type MemberProfileLink = z.infer<typeof memberProfileLinkSchema>;
+
+/** One published form as the public profile page lists it. */
+export interface PublicProfileForm {
+  slug: string;
+  name: string;
+  /** The form's own cover headline, when it has one worth showing. */
+  headline?: string | null;
+}
+
+/** What `GET /v1/public/profiles/:accountCode/:handle` returns. */
+export interface PublicProfile {
+  handle: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  headline: string | null;
+  bio: string | null;
+  links: MemberProfileLink[];
+  forms: PublicProfileForm[];
+  branding: z.infer<typeof formBrandingSchema> | null;
+}
+
+export const formConfigSchema = z.object({
+  version: z.literal(1),
+  /**
+   * PUBLIC title (ADDITIVE). Separate from `form.name`, the private label in the
+   * dashboard. Absent — every legacy config — falls back to the name, so no
+   * published form changes. Deliberately NOT under `branding`: the brand kit
+   * snapshots that object across forms, and a title is per-form by definition.
+   */
+  title: z.string().max(200).nullable().optional(),
+  branding: formBrandingSchema.nullable().optional(),
+  cover: formCoverSchema.nullable().optional(),
+  /**
+   * Presentation layout for the public form (ADDITIVE — absent on every legacy
+   * config, which then renders as `'slides'`, exactly as it always has).
+   */
+  layout: z.enum(FORM_LAYOUTS).optional(),
+  /**
+   * The language the public form renders its chrome in: buttons, progress,
+   * thank-you copy, the confirmation email. ADDITIVE: absent or null = Auto,
+   * the visitor's browser decides, exactly as before this field existed. An
+   * explicit `?lang` on the URL still wins over both.
+   */
+  language: localeSchema.nullable().optional(),
+  /**
+   * Form-level button copy overriding the localized defaults (ADDITIVE).
+   * A step's own `buttonText` still wins for that step; the cover CTA keeps
+   * `cover.ctaText`. Blank or null = the stock label for the language.
+   */
+  labels: z
+    .object({
+      back: z.string().max(80).nullable().optional(),
+      next: z.string().max(80).nullable().optional(),
+      submit: z.string().max(80).nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+  steps: z.array(formStepSchema).default([]),
+  scoring: z.object({ enabled: z.boolean().optional() }).nullable().optional(),
+  outcomes: z.array(formOutcomeSchema).optional(),
+  /**
+   * Form-level ending, overridable per outcome (ADDITIVE — V5-B1). Absent on
+   * every legacy config, which then renders exactly as before: the built-in
+   * thank-you copy, and redirects only where an outcome sets one.
+   */
+  ending: formEndingSchema.nullable().optional(),
+  /**
+   * Pluggable submission destinations (CRM/webhook sync via the durable outbox).
+   * ADDITIVE — absent on every legacy config; the renderer never receives it.
+   */
+  destinations: z.array(formDestinationSchema).optional(),
+  reveal: formRevealSchema.nullable().optional(),
+  /** Third-party tracking ids (ADDITIVE — absent on every legacy config). */
+  tracking: formTrackingSchema.nullable().optional(),
+  /**
+   * Spam protection (ADDITIVE: absent on every legacy config, which means off).
+   * Staged with the draft and applied on Publish, like `tracking`. The public
+   * API strips it: the renderer only ever acts on `PublicForm.captcha`.
+   */
+  spamProtection: formSpamProtectionSchema.nullable().optional(),
+  /**
+   * BUILDER-ONLY node positions for the Logic canvas, keyed by step key
+   * (ADDITIVE — absent on every legacy config and on every form whose author
+   * never dragged a node). The engine and both renderers ignore it entirely.
+   * Coordinates are `.finite()` on purpose: a NaN reaching the config would
+   * fail this schema and take the whole form's autosave down with it.
+   */
+  logicLayout: z
+    .record(z.string(), z.object({ x: z.number().finite(), y: z.number().finite() }))
+    .optional(),
+  partialSubmitAfterStep: z.number().int().positive().optional(),
+  /**
+   * WHERE the reveal interstitial plays (1-based over `steps`; ADDITIVE —
+   * mirrors partialSubmitAfterStep). Absent = the engine falls back to the
+   * legacy `triggersReveal`, then defaults to after the last step. See
+   * `revealAfterKey` in @quill/engine.
+   */
+  revealAfterStep: z.number().int().positive().optional(),
+});
+export type FormConfig = z.infer<typeof formConfigSchema>;
+
+/** An empty but valid v1 config — the shape a freshly-created form starts with. */
+export const EMPTY_FORM_CONFIG: FormConfig = { version: 1, steps: [] };
+
+// --- Form CRUD (admin) -------------------------------------------------------
+
+/**
+ * Optimistic lock for the editor's writes: the `updatedAt` the client loaded
+ * or last received. The API answers 409 `STALE` (with the current row) when
+ * the form was written since. Absent = no check, which is what a client built
+ * before this field existed sends.
+ */
+export const expectedUpdatedAtSchema = z.number().int().nonnegative().optional();
+
+export const formInputSchema = z.object({
+  name: z.string().min(1).max(200),
+  /** Optional; auto-slugified from name (unique per account) when omitted. */
+  slug: z.string().min(1).max(80).optional(),
+  config: formConfigSchema.optional(),
+  expectedUpdatedAt: expectedUpdatedAtSchema,
+});
+export type FormInput = z.infer<typeof formInputSchema>;
+
+/** Body of POST /v1/forms/:id/publish (all optional; an empty body publishes unguarded). */
+export const publishFormInputSchema = z.object({ expectedUpdatedAt: expectedUpdatedAtSchema });
+export type PublishFormInput = z.infer<typeof publishFormInputSchema>;
+
+// --- Form folders (0021) -------------------------------------------------------
+
+/** A folder name: trimmed, 1 to 80 characters. Unique per account without regard to case (the API answers 409 NAME_TAKEN). */
+export const folderNameSchema = z.string().trim().min(1).max(80);
+/** Body of POST /v1/folders and PATCH /v1/folders/:id. */
+export const folderInputSchema = z.object({ name: folderNameSchema });
+export type FolderInput = z.infer<typeof folderInputSchema>;
+
+export const folderViewSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+export type FolderView = z.infer<typeof folderViewSchema>;
+
+/** Body of PATCH /v1/forms/:id/folder: the key is required, null unfiles. */
+export const formFolderPatchSchema = z.object({ folderId: z.string().min(1).nullable() });
+export type FormFolderPatch = z.infer<typeof formFolderPatchSchema>;
+
+/** POST /v1/forms may file the new form straight into a folder (PUT /v1/forms/:id never moves it). */
+export const formCreateInputSchema = formInputSchema.extend({
+  folderId: z.string().min(1).nullable().optional(),
+});
+export type FormCreateInput = z.infer<typeof formCreateInputSchema>;
+
+/**
+ * Body of PUT /v1/forms/:id/slug: the form's new public URL segment.
+ *
+ * Shape validation (the character rules) is `validateFormSlug` in @quill/engine
+ * and runs in the data layer, so a slug that gets past this bound still comes
+ * back as a typed SLUG_INVALID rather than a 500. What this pins is the
+ * CEILING, 80, which the engine's `FORM_SLUG_MAX_LENGTH` mirrors on purpose.
+ */
+export const formSlugInputSchema = z.object({
+  slug: z.string().trim().min(1).max(80),
+});
+export type FormSlugInput = z.infer<typeof formSlugInputSchema>;
+
+export const formViewSchema = z.object({
+  id: z.string(),
+  accountId: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  config: formConfigSchema,
+  /** Unpublished working copy (ADDITIVE; null when no draft is pending). */
+  draftConfig: formConfigSchema.nullable().optional(),
+  /** Epoch-ms of the last publish (ADDITIVE; null when never published). */
+  publishedAt: z.number().nullable().optional(),
+  /** The folder the form is filed in (ADDITIVE, 0021; null = unfiled). */
+  folderId: z.string().nullable().optional(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+export type FormView = z.infer<typeof formViewSchema>;
+
+/** Public shape of a published form (no internal ids leaked beyond the slug). */
+export const publicFormSchema = z.object({
+  slug: z.string(),
+  name: z.string(),
+  config: formConfigSchema,
+  /**
+   * The deployment's per-file ceiling in MB, for a form that asks for a file.
+   * The renderer needs it to tell a visitor "up to 10 MB" before they pick a
+   * 40 MB video, and only the API knows the number. Absent on a deployment
+   * with no storage, which is also one that cannot have published such a form.
+   */
+  uploadMaxMb: z.number().int().positive().optional(),
+  /**
+   * The human check the final submit must pass. Absent on a form that did not
+   * turn it on and on a deployment with no challenge keys; the renderer loads
+   * nothing from the challenge provider without it.
+   */
+  captcha: publicCaptchaSchema.optional(),
+});
+export type PublicForm = z.infer<typeof publicFormSchema>;
+
+// --- Submissions -------------------------------------------------------------
+
+/**
+ * One submission's answers: fieldName -> value. Most values are scalars (or a
+ * string[] for multi-select); the reserved `utm` key carries a flat string map
+ * of the URL's `utm_*` params (additive — captured from the public URL, never a
+ * new column: it rides inside the free-form answers JSON).
+ *
+ * A `file` answer rides in that same string map as
+ * `{ key, name, size, mime }`. `size` is a string because this record holds
+ * strings, which is exactly why the shape needed no migration and no column.
+ * `parseFileAnswer` in @quill/engine is the only thing that should read it.
+ */
+export const submissionAnswersSchema = z.record(
+  z.string(),
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.array(z.string()),
+    z.record(z.string(), z.string()),
+    z.null(),
+  ]),
+);
+export type SubmissionAnswers = z.infer<typeof submissionAnswersSchema>;
+
+/**
+ * Body of POST /v1/public/forms/:accountCode/:slug/uploads: the browser asking
+ * for permission to upload one file.
+ *
+ * Everything here is a CLAIM by an anonymous client, including `size` and
+ * `mime`. The API checks the claim against the published config before signing
+ * anything, and checks the object itself again on submit. A client that lies
+ * gets a signature it cannot use.
+ */
+export const uploadPresignSchema = z.object({
+  /** Same per-session id the submission will carry; it scopes the object key. */
+  sessionId: z.string().min(1).max(200),
+  /** Which question this file answers. Must be a `file` step on the published form. */
+  stepKey: z.string().min(1).max(64),
+  /** The respondent's own filename. Stored in the answer, never in the key. */
+  name: z.string().min(1).max(255),
+  size: z.number().int().positive(),
+  mime: z.string().min(1).max(200),
+});
+export type UploadPresignInput = z.infer<typeof uploadPresignSchema>;
+
+/** What the browser gets back: where to PUT, and what the answer must carry. */
+export const uploadPresignResultSchema = z.object({
+  url: z.string(),
+  key: z.string(),
+  /** Header the PUT must send verbatim; it is inside the signature. */
+  contentType: z.string(),
+  expiresInSec: z.number().int().positive(),
+});
+export type UploadPresignResult = z.infer<typeof uploadPresignResultSchema>;
+
+/**
+ * How a stored file may be shown. Decided by the API from the file's extension,
+ * which is the one thing about an upload that was verified (the magic-byte
+ * check compares the bytes against it). Never from the answer's `mime`, which
+ * is whatever the browser typed and nothing ever checked.
+ */
+export const previewKindSchema = z.enum(['image', 'pdf', 'text', 'docx', 'none']);
+export type PreviewKind = z.infer<typeof previewKindSchema>;
+
+/**
+ * What the dashboard gets when it asks for one uploaded file.
+ *
+ * `url` always downloads, and is what the download control uses. `previewUrl`
+ * exists only for a type the API decided is safe to render, and `kind` says
+ * which viewer to point at it. The dashboard is TOLD what it may show rather
+ * than asking, so nothing on the client can turn an upload into a page by
+ * naming a type.
+ */
+export const submissionFileSchema = z.object({
+  /** The respondent's own filename, the only name worth showing. */
+  name: z.string(),
+  /** Size in bytes as a string, matching how it rides in the answers map. */
+  size: z.string(),
+  kind: previewKindSchema,
+  url: z.string(),
+  previewUrl: z.string().nullable(),
+});
+export type SubmissionFile = z.infer<typeof submissionFileSchema>;
+
+export const submissionSchema = z.object({
+  /** Per-session id (sessionStorage) tying events + the submission together. */
+  sessionId: z.string().min(1).max(200),
+  data: submissionAnswersSchema,
+  /** True for an intermediate (partial) save; false/absent = final submit. */
+  partial: z.boolean().optional(),
+  /**
+   * The language the respondent actually saw (the page resolved `?lang`, the
+   * form language and the browser; the API knows none of those). Drives the
+   * confirmation email. Absent = the form language, then English.
+   */
+  locale: localeSchema.optional(),
+  /**
+   * The challenge token for a form with spam protection on. Required by the API
+   * on a COMPLETE submit of such a form, ignored everywhere else. Never stored
+   * and never logged. 2048 is the provider's own ceiling.
+   */
+  captchaToken: z.string().max(2048).optional(),
+  /**
+   * The hidden field of a form in strict mode. A person never sees it, so any
+   * value is a bot's. Top-level on purpose: it must never reach `data`, the
+   * stored answers.
+   */
+  hp: z.string().max(1024).optional(),
+  /**
+   * The page the form was answered on (see `submissionVisitSchema`). Tolerant:
+   * a malformed visit is dropped field by field and never fails the submit.
+   * Top-level for the same reason as `hp`: it is not an answer.
+   */
+  visit: submissionVisitSchema,
+});
+export type SubmissionInput = z.infer<typeof submissionSchema>;
+
+export const submissionViewSchema = z.object({
+  id: z.string(),
+  formId: z.string(),
+  sessionId: z.string(),
+  data: submissionAnswersSchema,
+  score: z.number().int(),
+  startedAt: z.number(),
+  completedAt: z.number().nullable(),
+  partialAt: z.number().nullable(),
+  /** Where it was answered, as the dashboard may see it (never the HubSpot cookie). */
+  visit: submissionVisitViewSchema.nullable().optional(),
+});
+export type SubmissionView = z.infer<typeof submissionViewSchema>;
+
+// --- Funnel events -----------------------------------------------------------
+
+export const formEventType = [
+  'view',
+  'start',
+  'step_view',
+  'step_complete',
+  'partial_submit',
+  'submit',
+] as const;
+export type FormEventType = (typeof formEventType)[number];
+
+export const formEventSchema = z.object({
+  sessionId: z.string().min(1).max(200),
+  type: z.enum(formEventType),
+  stepIndex: z.number().int().min(0).nullable().optional(),
+  /**
+   * The step's authored key (stable identity), alongside `stepIndex` (position
+   * in THIS session's visible-step order, which shifts under show/hide/goto
+   * logic). The drop-off table needs the key to attribute a view to the actual
+   * question shown rather than to whichever config step sits at that position.
+   */
+  stepKey: z.string().min(1).max(64).nullable().optional(),
+});
+export type FormEventInput = z.infer<typeof formEventSchema>;
+
+// --- Booking callbacks (scheduling handoff on the public surface) ------------
+
+/**
+ * The public booking callback: the renderer reports a meeting booked through an
+ * outcome's scheduling embed (HubSpot Meetings / Calendly) so it can be tied to
+ * the session's submission. Persisted as a `booking_event` row; delivery to
+ * destinations is a later, outbox-driven concern.
+ */
+export const bookingCallbackSchema = z.object({
+  /** Per-session id (sessionStorage) tying the booking to its submission. */
+  sessionId: z.string().min(1).max(200),
+  provider: z.enum(bookingProvider),
+  /** Provider URI of the scheduled event (Calendly event / HubSpot meeting). */
+  eventUri: z.string().url().max(2048).optional(),
+  /** Provider URI of the invitee record. */
+  inviteeUri: z.string().url().max(2048).optional(),
+  /** Scheduled start as an ISO 8601 datetime. */
+  startTime: z.string().datetime({ offset: true }).optional(),
+});
+export type BookingCallbackInput = z.infer<typeof bookingCallbackSchema>;
+
+// --- Analytics (funnel + per-step drop-off) ----------------------------------
+// ADDITIVE: new exports only. These describe the admin analytics dashboard
+// response (GET /v1/forms/:id/analytics) — a funnel summary plus a
+// question-by-question drop-off table (a cover row + one row per configured
+// step). Computed server-side from form_event + submission; works identically
+// on SQLite and Postgres.
+
+/** One row of the question-by-question drop-off table. */
+export const dropoffRowSchema = z.object({
+  /** -1 for the synthetic cover/landing row, otherwise the 0-based step index. */
+  stepIndex: z.number().int(),
+  /** The step's field key (null for the cover row). */
+  key: z.string().nullable(),
+  /** Human label for the row (the step question, or the cover title). */
+  question: z.string(),
+  /** True for the synthetic cover/landing row. */
+  isCover: z.boolean(),
+  /** Sessions that viewed this step (form views for the cover row). */
+  views: z.number().int(),
+  /** Sessions lost between this row and the next (never negative). */
+  dropoff: z.number().int(),
+  /** Drop-off as a percentage of this row's views (1 decimal). */
+  dropoffPercent: z.number(),
+});
+export type DropoffRow = z.infer<typeof dropoffRowSchema>;
+
+/**
+ * One day of the Trends series — every metric for that bucket, so the chart can
+ * switch the plotted metric without another round trip. Buckets are whole UTC
+ * days; the range is gap-filled, so a day with no activity is present with zeros
+ * (a missing day would draw a misleading straight line across it).
+ */
+export const trendPointSchema = z.object({
+  /**
+   * Epoch ms of UTC midnight of the CALENDAR DAY this bucket names, in the
+   * zone the response was resolved in (`range.timeZone`). Render it in UTC.
+   */
+  t: z.number().int(),
+  /** Unique sessions that viewed the form that day. */
+  views: z.number().int(),
+  /** Unique sessions that reached the first question that day. */
+  starts: z.number().int(),
+  /** Submissions completed that day. */
+  submissions: z.number().int(),
+  /** submissions / starts for that day (1 decimal); null when starts=0. */
+  completionRate: z.number().nullable(),
+  /** Median whole seconds open→complete that day; null when not derivable. */
+  timeToComplete: z.number().int().nullable(),
+});
+export type TrendPoint = z.infer<typeof trendPointSchema>;
+
+/** The funnel summary + drop-off table for a form over an optional date range. */
+export const analyticsResponseSchema = z.object({
+  /** Unique sessions that viewed the form (distinct session_id on `view`). */
+  views: z.number().int(),
+  /** Unique sessions that reached the first question (`step_view` idx 0). */
+  starts: z.number().int(),
+  /** Count of completed submissions (completedAt set). */
+  submissions: z.number().int(),
+  /**
+   * submissions / starts as a percentage (1 decimal), capped at 100; null when
+   * there were no starts in the window (no denominator — a rate nobody can
+   * compute, which 0% would misstate next to a real Submissions count).
+   */
+  completionRate: z.number().nullable(),
+  /**
+   * MEDIAN whole seconds from form open (first `view`) to completion, or null
+   * when no completed session in range had a derivable open time. Null is NOT
+   * zero: reporting 0s for a submission whose open beacon was lost is exactly
+   * the fabricated fact this metric was rewritten to remove.
+   */
+  timeToComplete: z.number().int().nullable(),
+  /** Partial-only submissions (partialAt set, completedAt null). */
+  partialSubmits: z.number().int(),
+  /**
+   * Unique sessions that booked a meeting (scheduler step / booking outcome).
+   * For a form whose conversion is the meeting, this is the real bottom of the
+   * funnel — Submissions alone under-reports it.
+   */
+  bookings: z.number().int(),
+  /**
+   * What the drop-off funnel body counts per step: `viewed` (slides — reached
+   * the step) or `answered` (vertical — completed it; every question is
+   * visible on load there, so "viewed" would flatten into Views).
+   */
+  dropoffMode: z.enum(['viewed', 'answered']),
+  /** Cover row + one row per configured step. */
+  dropoff: z.array(dropoffRowSchema),
+  /** Gap-filled per-day series for the Trends chart (oldest → newest). */
+  trends: z.array(trendPointSchema),
+  /** Echoes the resolved range (epoch ms) so the client can render it. */
+  range: z.object({
+    from: z.number().nullable(),
+    to: z.number().nullable(),
+    /** The zone the day buckets were named in (absent on older responses = UTC). */
+    timeZone: z.string().optional(),
+  }),
+});
+export type AnalyticsResponse = z.infer<typeof analyticsResponseSchema>;
+
+// --- Submissions listing (paginated + filtered) ------------------------------
+// ADDITIVE: the admin submissions table response. `status` narrows to complete
+// or partial; `from`/`to` bound by startedAt; `limit`/`offset` paginate.
+
+export const submissionStatusFilter = ['all', 'completed', 'partial'] as const;
+export type SubmissionStatusFilter = (typeof submissionStatusFilter)[number];
+
+export const submissionsPageSchema = z.object({
+  items: z.array(submissionViewSchema),
+  /** Total rows matching the filter (before pagination). */
+  total: z.number().int(),
+  limit: z.number().int(),
+  offset: z.number().int(),
+});
+export type SubmissionsPage = z.infer<typeof submissionsPageSchema>;
+
+// --- Member management (workspace roster) ------------------------------------
+
+/** Create a workspace: a name is the only thing a person types. */
+export const workspaceCreateSchema = z.object({
+  name: z.string().trim().min(1, 'A name is required.').max(80),
+});
+export type WorkspaceCreateInput = z.infer<typeof workspaceCreateSchema>;
+
+/** Rename the current workspace. */
+export const workspaceRenameSchema = z.object({
+  name: z.string().trim().min(1, 'A name is required.').max(80),
+});
+export type WorkspaceRenameInput = z.infer<typeof workspaceRenameSchema>;
+
+/**
+ * An IANA timezone name the runtime knows (`America/Bogota`, `UTC`). The
+ * regex keeps the shape honest before `Intl` is asked, and `Intl` is the
+ * source of truth: a zone this server cannot resolve is rejected here rather
+ * than silently read as UTC everywhere later.
+ */
+export const timeZoneSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^[A-Za-z0-9_+-]+(?:\/[A-Za-z0-9_+-]+)*$/, 'Not a timezone name.')
+  .refine(
+    (zone) => {
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: zone });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: 'Unknown timezone.' },
+  );
+
+/** PATCH /v1/workspaces/current/timezone: set, clear (null), or seed only while unset. */
+export const workspaceTimezoneSchema = z.object({
+  timezone: timeZoneSchema.nullable(),
+  /** True = a write-once claim from the browser's zone; false/absent = an explicit choice. */
+  onlyIfUnset: z.boolean().optional(),
+});
+export type WorkspaceTimezoneInput = z.infer<typeof workspaceTimezoneSchema>;
+
+export const memberInviteSchema = z.object({
+  email: z.string().email().max(320),
+  role: z.enum(['admin', 'member']).optional(),
+  displayName: z.string().max(200).nullable().optional(),
+});
+export type MemberInvite = z.infer<typeof memberInviteSchema>;
+
+export const memberPatchSchema = z
+  .object({
+    role: z.enum(accountRole).optional(),
+    status: z.enum(memberStatus).optional(),
+  })
+  .refine((v) => v.role !== undefined || v.status !== undefined, {
+    message: 'Provide a role or status to change.',
+  });
+export type MemberPatch = z.infer<typeof memberPatchSchema>;
+
+// --- Notification settings (Settings → Notifications) ------------------------
+
+/** Hard ceiling on the notice's recipient list, enforced here and in the editor. */
+export const NOTIFICATION_RECIPIENTS_MAX = 5;
+
+/**
+ * Who the new-submission notice goes to. `null` restores inheritance (a form
+ * falls back to its account, an account falls back to the owner inbox); an
+ * EMPTY array is a deliberate "notify the owner only" and stops inheriting.
+ *
+ * Duplicates are rejected rather than tolerated: one email is enqueued per
+ * address with a per-address idempotency key, so two rows holding the same
+ * mailbox would collide on that key and the managed transport would drop the
+ * second copy with no error and no log.
+ */
+const notificationRecipientsSchema = z
+  .array(z.string().trim().email().max(320))
+  .max(NOTIFICATION_RECIPIENTS_MAX)
+  .refine((list) => new Set(list.map((a) => a.toLowerCase())).size === list.length, {
+    message: 'Each address can only be listed once.',
+  });
+
+/**
+ * The write body for a notification email's per-account settings: toggle it on/
+ * off, override the subject/body, and set who the notice goes to. `subject`/
+ * `body` are PLAIN TEXT with `{{token}}` markers; passing `null` resets that
+ * field to the shipped default, `undefined` (absent) leaves it untouched. The
+ * `emailKey` itself is a path param the API validates against the notifications
+ * catalog (kept out of this contract so the package boundary stays
+ * one-directional). Every field is optional: an empty patch is a harmless no-op.
+ */
+export const notificationSettingPatchSchema = z.object({
+  enabled: z.boolean().optional(),
+  subject: z.string().max(300).nullable().optional(),
+  body: z.string().max(8000).nullable().optional(),
+  recipients: notificationRecipientsSchema.nullable().optional(),
+});
+export type NotificationSettingPatchInput = z.infer<typeof notificationSettingPatchSchema>;
+
+export const meResponseSchema = z.object({
+  accountId: z.string(),
+  accountCode: z.string(),
+  memberId: z.string(),
+  handle: z.string().nullable(),
+  displayName: z.string().nullable(),
+  email: z.string().nullable(),
+  role: z.enum(accountRole),
+  status: z.enum(memberStatus),
+});
+export type MeResponse = z.infer<typeof meResponseSchema>;
+
+/** Problem-details error body (RFC 7807-ish) the API returns. */
+export const apiErrorSchema = z.object({
+  error: z.string(),
+  message: z.string(),
+});
+export type ApiError = z.infer<typeof apiErrorSchema>;
+
+/* ---------------------------------------------------------------------------
+ * Reading the inbound tags off a request.
+ *
+ * The wire format is snake_case because that is the URL convention every ad
+ * platform emits (`utm_source`, `gclid`). The STORED format is `attributionSchema`
+ * above. This is the one place the two are mapped, so neither side has to know
+ * about the other's casing.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Inbound query key -> stored field, with the cap that field allows.
+ *
+ * The cap is applied by TRUNCATING before validation, not by letting zod reject:
+ * a single over-long value (a hostile URL, or just a very long `fbclid`) would
+ * otherwise fail the whole parse and discard the campaign along with it. The spec
+ * case "never returns null because a value was too long" pins that.
+ */
+/**
+ * Only the STRING-valued fields can appear in the map. `attributionSchema` also
+ * has the numeric `firstSeenAt`, and the loop below assigns a string — mapping it
+ * would make `safeParse` fail and silently drop the ENTIRE payload. The compiler
+ * refuses it instead.
+ */
+type AttributionStringKey = {
+  [K in keyof Attribution]-?: NonNullable<Attribution[K]> extends string ? K : never;
+}[keyof Attribution];
+
+const ATTRIBUTION_QUERY_MAP = [
+  ['utm_source', 'utmSource', 128],
+  ['utm_medium', 'utmMedium', 128],
+  ['utm_campaign', 'utmCampaign', 128],
+  ['utm_content', 'utmContent', 128],
+  ['utm_term', 'utmTerm', 128],
+  ['gclid', 'gclid', 512],
+  ['fbclid', 'fbclid', 512],
+  ['referrer', 'referrer', 512],
+  ['landing_path', 'landingPath', 512],
+] as const satisfies ReadonlyArray<readonly [string, AttributionStringKey, number]>;
+
+/** The query parameters this product reads. Everything else is ignored. */
+export const ATTRIBUTION_QUERY_KEYS: ReadonlyArray<string> = ATTRIBUTION_QUERY_MAP.map(([q]) => q);
+
+/**
+ * Normalize inbound query params into the stored shape, or `null` when there is
+ * nothing worth storing.
+ *
+ * Returning `null` for "no keys present" is load-bearing: the column is written
+ * once and never again, so persisting `{}` for an untagged direct visit would
+ * SPEND first touch and the real campaign could never be recorded afterwards.
+ *
+ * An allowlist rather than "copy every query param": anyone can craft a link, so
+ * this input is attacker-supplied, and it lands in a column that later feeds a
+ * CRM. Nothing here is ever used for authorization or rendered as markup.
+ */
+export function parseAttribution(
+  params: Readonly<Record<string, string | string[] | undefined | null>>,
+): Attribution | null {
+  const out: Record<string, string> = {};
+  for (const [queryKey, field, cap] of ATTRIBUTION_QUERY_MAP) {
+    const raw = params[queryKey];
+    // A repeated param (`?utm_source=a&utm_source=b`) arrives as an array. Take
+    // the FIRST: last-wins would let an appended duplicate override the real one.
+    const value = (Array.isArray(raw) ? raw[0] : raw) ?? '';
+    const trimmed = String(value).trim();
+    if (!trimmed) continue;
+    out[field] = trimmed.slice(0, cap);
+  }
+  if (Object.keys(out).length === 0) return null;
+  const parsed = attributionSchema.safeParse(out);
+  return parsed.success ? parsed.data : null;
+}
+
+/**
+ * The stored blob re-keyed to snake_case, for the product-analytics wire.
+ *
+ * The column stores camelCase, but every other property this product sends is
+ * snake_case (`form_id`, `is_first_publish`), and the analytics project is shared
+ * with the rest of the Dapta estate — property naming there is a cross-product
+ * contract, not a local style choice. Non-string values are dropped, so a numeric
+ * field can never arrive where a tag is expected.
+ */
+export function attributionEventProps(attribution: Attribution): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [queryKey, field] of ATTRIBUTION_QUERY_MAP) {
+    const value = attribution[field];
+    if (typeof value === 'string' && value) out[queryKey] = value;
+  }
+  return out;
+}
+
+/* ---------------------------------------------------------------------------
+ * ONBOARDING — the wizard a brand-new workspace sees before its dashboard.
+ *
+ * Three questions and a template pick. The answers describe WHO the workspace is
+ * for; the bookkeeping fields describe HOW FAR they got, which is the half that
+ * makes drop-off answerable at all.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Question 1 — "what best describes your role?".
+ *
+ * `other` is LAST on purpose. It is an escape hatch, not a peer of the real
+ * answers, and a list that buries it mid-way (as Typeform's does, at 7 of 8)
+ * makes people scan past their own role to find it.
+ */
+export const ONBOARDING_ROLES = [
+  'sales',
+  'marketing',
+  'support',
+  'product',
+  'founder',
+  'engineering',
+  'hr',
+  'operations',
+  'other',
+] as const;
+export type OnboardingRole = (typeof ONBOARDING_ROLES)[number];
+
+/**
+ * The industry question — the Dapta IAM's own bank, verbatim.
+ *
+ * Fifty-two values, and every one of them is an `option_value` from the IAM's
+ * `pre_signup` stage. Forms used to carry eleven buckets of its own invention,
+ * which read fine on the screen and made the two products' data impossible to
+ * join: the same company was `software` here and `computer_software` there, and
+ * no report could span both. Matching the values is what lets a Forms account be
+ * segmented with the lead score Dapta has already computed for it.
+ *
+ * Fifty-two is not too many BECAUSE the screen is a searchable dropdown — that
+ * component exists precisely for a list nobody scans. Two of the old buckets have
+ * no equivalent in the bank (`ecommerce`, `manufacturing`); migration 0012
+ * records where they went.
+ *
+ * Ordered as the IAM orders them, so a diff against the bank stays readable.
+ */
+export const ONBOARDING_INDUSTRIES = [
+  'accounting',
+  'airlines_aviation',
+  'alternative_dispute_resolution',
+  'alternative_medicine',
+  'animation',
+  'apparel_fashion',
+  'architecture_planning',
+  'arts_crafts',
+  'automotive',
+  'aviation_aerospace',
+  'banking',
+  'biotechnology',
+  'broadcast_media',
+  'building_materials',
+  'business_supplies',
+  'capital_markets',
+  'chemicals',
+  'civic_social',
+  'civil_engineering',
+  'commercial_real_estate',
+  'computer_security',
+  'computer_games',
+  'computer_hardware',
+  'computer_networking',
+  'computer_software',
+  'construction',
+  'consumer_electronics',
+  'consumer_goods',
+  'consumer_services',
+  'education_management',
+  'financial_services',
+  'health_wellness',
+  'hospital_healthcare',
+  'hospitality',
+  'it_services',
+  'insurance',
+  'internet',
+  'law_practice',
+  'legal_services',
+  'marketing_advertising',
+  'medical_practice',
+  'nonprofit',
+  'real_estate',
+  'restaurants',
+  'retail',
+  'telecommunications',
+  'other',
+  'events_services',
+  'higher_education',
+  'human_resources',
+  'information_services',
+  'professional_training_coaching',
+] as const;
+export type OnboardingIndustry = (typeof ONBOARDING_INDUSTRIES)[number];
+
+/**
+ * The CRM question — the IAM's `crm_usage` bank, minus one duplicate.
+ *
+ * The bank ships `none` ("Ninguno/None") AND `no_crm` ("I don't use CRM"): the
+ * same answer twice, with the same score. Offering both would split the one
+ * segment that matters most — the people with nowhere to send a lead — across two
+ * values, so only `none` survives here.
+ *
+ * Asked ONLY of someone who did not arrive from Dapta, and it is the one answer
+ * that is immediately actionable rather than descriptive: Forms already syncs to
+ * HubSpot, so "hubspot" on day one is a connection to offer, not a segment to
+ * file away.
+ */
+/**
+ * "How many leads do you get a month?" — the IAM's `contacts_per_month` bank,
+ * values verbatim.
+ *
+ * Forms asked nothing like this before, on the grounds that a form can be for
+ * anything and lead volume is a lead-gen question. It is here now because the
+ * cold cohort is being qualified, not just profiled — and taking the IAM's own
+ * buckets means a Forms answer and a Dapta answer land in the same histogram
+ * instead of two that cannot be added together.
+ *
+ * Skipped for anyone arriving from Dapta: they answered it at signup.
+ */
+export const ONBOARDING_LEAD_VOLUMES = [
+  '0_50',
+  '51_200',
+  '201_500',
+  '501_1000',
+  '1001_5000',
+  '5000_plus',
+] as const;
+export type OnboardingLeadVolume = (typeof ONBOARDING_LEAD_VOLUMES)[number];
+
+/**
+ * "Where do your leads come from?" — Forms' own question. The IAM has no
+ * equivalent.
+ *
+ * That absence is the interesting part: it is the ONE question here that Dapta
+ * cannot answer on someone's behalf, so it is asked of BOTH cohorts. Everything
+ * else the wizard collects is either already in the IAM's bank or specific to
+ * building a form; this is the only genuinely new signal Forms contributes back.
+ *
+ * `none` sits first rather than last, unlike the `other` escape hatch elsewhere:
+ * "I don't have leads yet" is a real and common answer for a brand-new account,
+ * not a fallback for people whose answer is missing from the list.
+ */
+export const ONBOARDING_LEAD_SOURCES = [
+  'none',
+  'facebook_ads',
+  'google_ads',
+  'outbound',
+  'internal_lists',
+  'other',
+] as const;
+export type OnboardingLeadSource = (typeof ONBOARDING_LEAD_SOURCES)[number];
+
+export const ONBOARDING_CRMS = [
+  'none',
+  'hubspot',
+  'odoo',
+  'clientify',
+  'ghl',
+  'bitrix24',
+  'salesforce',
+  'activecampaign',
+  'pipedrive',
+  'zoho_crm',
+  'escala',
+  'other',
+] as const;
+export type OnboardingCrm = (typeof ONBOARDING_CRMS)[number];
+
+/**
+ * Question 3 — "what do you want to use Forms for?".
+ *
+ * Deliberately 1:1 with the templates below (minus `other`): the question IS the
+ * template picker, answered a screen early. Answer `leads` and the lead
+ * qualifier is already selected on the next screen, so the momentum never breaks.
+ */
+export const ONBOARDING_USE_CASES = ['leads', 'feedback', 'event', 'application', 'other'] as const;
+export type OnboardingUseCase = (typeof ONBOARDING_USE_CASES)[number];
+
+/**
+ * The starting points offered at the end of the wizard.
+ *
+ * `blank` is not a template — it is the honest "start from scratch" choice, and
+ * it resolves to an empty form rather than to a config. Keeping it in the same
+ * union is what lets `template` record what the person actually picked instead
+ * of going NULL and being indistinguishable from an abandon.
+ */
+export const FORM_TEMPLATE_IDS = [
+  'lead-qualifier',
+  'customer-feedback',
+  'event-registration',
+  'application',
+  'blank',
+] as const;
+export type FormTemplateId = (typeof FORM_TEMPLATE_IDS)[number];
+
+/** Which use case pre-selects which template. `other` pre-selects nothing. */
+export const USE_CASE_TEMPLATE: Readonly<Record<OnboardingUseCase, FormTemplateId | null>> = {
+  leads: 'lead-qualifier',
+  feedback: 'customer-feedback',
+  event: 'event-registration',
+  application: 'application',
+  other: null,
+};
+
+/**
+ * The wizard's screens, in order. `lastStep` names the furthest one REACHED, so
+ * these are the buckets a drop-off report groups by.
+ *
+ * ORDER IS LOAD-BEARING, twice over: `lastStep` is only ever allowed to advance
+ * along this array (see `furthestStep` in @quill/db), and the cohorts below are
+ * both subsequences of it. Reordering this list silently re-buckets every
+ * drop-off report ever run.
+ *
+ * Not every person sees every screen — see `ONBOARDING_COHORTS`.
+ */
+export const ONBOARDING_STEPS = [
+  'phone',
+  // NO LONGER ASKED, and deliberately still here. Accounts onboarded before this
+  // release carry `lastStep: 'role'` and a stored `role`, and the whole blob is
+  // validated with one `safeParse` — dropping the value from this union would
+  // make those rows unreadable and take `industry`, `useCase` and every
+  // drop-off breadcrumb down with it. It costs one array entry to keep them.
+  'role',
+  'industry',
+  'crm',
+  'lead_volume',
+  'lead_source',
+  'use_case',
+  'template',
+] as const;
+export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
+
+/**
+ * Who is asked what.
+ *
+ * The rule is one line: never ask for something Dapta AI already holds. Its
+ * `pre_signup` bank covers industry, CRM and lead volume, and its signup takes a
+ * phone number — so a customer arriving from the platform is asked none of those
+ * four. Re-asking them is the clearest possible way to tell someone that the two
+ * products do not talk to each other.
+ *
+ * Two questions survive for everyone, for opposite reasons:
+ *
+ *  - `lead_source` — the IAM has NO equivalent, so nobody can answer it on the
+ *    person's behalf. It is the only genuinely new signal Forms contributes back.
+ *  - `use_case` — Dapta's `dapta_goals` asks about voice and text agents, not
+ *    about what someone wants a FORM for, and this answer is what preselects a
+ *    template on the very next screen.
+ *
+ * The cold cohort answers six. That is a deliberate trade of raw signups for
+ * qualified ones, and it is measurable rather than arguable: `lastStep` is
+ * written on every advance, so `lastStep: 'phone'` with no completion is exactly
+ * the number that says what the first screen costs.
+ *
+ * `role` is in neither list — no longer asked, kept in the union above so
+ * already-stored answers still parse.
+ */
+export const ONBOARDING_COHORTS = {
+  /** No Dapta account behind this signup — nothing is known, so everything is asked. */
+  cold: ['phone', 'industry', 'crm', 'lead_volume', 'lead_source', 'use_case'],
+  /** Came from Dapta AI. Only what Dapta cannot answer for them. */
+  dapta: ['lead_source', 'use_case'],
+} as const satisfies Readonly<Record<string, readonly OnboardingStep[]>>;
+export type OnboardingCohort = keyof typeof ONBOARDING_COHORTS;
+
+/**
+ * Why an answer is missing.
+ *
+ * `null` alone cannot tell "we never asked" from "we asked and they skipped" from
+ * "Dapta holds it". The third is the one that matters: the IAM has no endpoint
+ * that returns a person's answers yet (`GET /onboarding/responses/:userId` is a
+ * 404 today), so skipping those screens leaves the column empty for the entire
+ * Dapta cohort. Recording the REASON keeps that hole legible and turns the
+ * eventual fix into a backfill query instead of a re-survey.
+ */
+export const ONBOARDING_ANSWER_SOURCES = ['asked', 'skipped', 'dapta'] as const;
+export type OnboardingAnswerSource = (typeof ONBOARDING_ANSWER_SOURCES)[number];
+
+/**
+ * `account.onboarding` (migration 0011) — the wizard's working state AND result.
+ *
+ * Every field is optional because this row is written on EVERY step advance, not
+ * only at the end. A half-filled blob is the normal, expected shape: it is the
+ * record of someone who is still mid-wizard, or who left. Requiring the answers
+ * would mean nothing is stored until completion, and an abandoned onboarding
+ * would leave no trace — which is precisely the thing this column exists to
+ * measure.
+ *
+ * Answers are stored RAW, with no score attached. Weighting them is a decision
+ * to make against real data later; baking a guess into the column now would make
+ * it unrecoverable.
+ *
+ * The API validates against this before writing, so an enum value the product
+ * does not offer can never reach the column even though the request body is
+ * client-supplied.
+ */
+export const accountOnboardingSchema = z.object({
+  version: z.literal(1),
+  role: z.enum(ONBOARDING_ROLES).nullable().optional(),
+  industry: z.enum(ONBOARDING_INDUSTRIES).nullable().optional(),
+  useCase: z.enum(ONBOARDING_USE_CASES).nullable().optional(),
+  crm: z.enum(ONBOARDING_CRMS).nullable().optional(),
+  leadVolume: z.enum(ONBOARDING_LEAD_VOLUMES).nullable().optional(),
+  leadSource: z.enum(ONBOARDING_LEAD_SOURCES).nullable().optional(),
+  /**
+   * E.164, as the phone input produces it. Stored on the ACCOUNT rather than the
+   * member because that is where every other wizard answer lives and the wizard's
+   * only member IS the owner; a per-person number belongs on `member` the day a
+   * second person can answer this.
+   *
+   * Never rendered on a public surface — `member.profile` is the public page and
+   * this is deliberately not in it.
+   */
+  phone: z.string().trim().max(32).nullable().optional(),
+  template: z.enum(FORM_TEMPLATE_IDS).nullable().optional(),
+  /** Which set of screens this person was shown — cold, or arriving from Dapta. */
+  cohort: z.enum(['cold', 'dapta']).nullable().optional(),
+  /**
+   * Why each unasked answer is unasked. Absent means "asked and answered".
+   * See `ONBOARDING_ANSWER_SOURCES` — the point is that a NULL industry on a
+   * Dapta account is a pointer, not a gap.
+   */
+  sources: z
+    .record(z.enum(ONBOARDING_STEPS), z.enum(ONBOARDING_ANSWER_SOURCES))
+    .nullable()
+    .optional(),
+  /** The furthest screen REACHED — the drop-off bucket. */
+  lastStep: z.enum(ONBOARDING_STEPS).nullable().optional(),
+  /**
+   * Every screen reached, in order, deduped. `lastStep` alone cannot tell a
+   * straight run from one that went back and forth, and back-navigation is a
+   * usability signal worth keeping. Capped at the step count so a crafted body
+   * cannot grow the row.
+   */
+  stepsSeen: z.array(z.enum(ONBOARDING_STEPS)).max(ONBOARDING_STEPS.length).optional(),
+  /** Epoch-ms the wizard was first opened, for time-to-complete. */
+  startedAt: z.number().int().nonnegative().nullable().optional(),
+  /**
+   * The form the winning claim created, recorded so a LOSING claim (a
+   * double-submit, a second tab) can be sent to that exact form.
+   *
+   * Written after the create, because the claim has to run first — only its
+   * winner may create anything. Guessing instead, by taking the account's
+   * oldest form, sends the loser to an unrelated pre-existing form with the
+   * first-run tour armed on it.
+   */
+  formId: z.string().nullable().optional(),
+});
+export type AccountOnboarding = z.infer<typeof accountOnboardingSchema>;
+
+/**
+ * The PATCH body: a partial the client may send as it advances.
+ *
+ * `version` is deliberately NOT accepted — it is stamped server-side. A client
+ * that could set it could park a blob the reader will not understand.
+ * `stepsSeen` is likewise server-derived (appended from `lastStep`), so the
+ * ordering cannot be forged into a straight run that never happened.
+ */
+export const onboardingProgressSchema = z.object({
+  role: z.enum(ONBOARDING_ROLES).nullable().optional(),
+  industry: z.enum(ONBOARDING_INDUSTRIES).nullable().optional(),
+  useCase: z.enum(ONBOARDING_USE_CASES).nullable().optional(),
+  crm: z.enum(ONBOARDING_CRMS).nullable().optional(),
+  leadVolume: z.enum(ONBOARDING_LEAD_VOLUMES).nullable().optional(),
+  leadSource: z.enum(ONBOARDING_LEAD_SOURCES).nullable().optional(),
+  phone: z.string().trim().max(32).nullable().optional(),
+  template: z.enum(FORM_TEMPLATE_IDS).nullable().optional(),
+  lastStep: z.enum(ONBOARDING_STEPS).nullable().optional(),
+});
+export type OnboardingProgressInput = z.infer<typeof onboardingProgressSchema>;
+
+/**
+ * The complete body: which starting point to create the first form from, plus
+ * the answers the wizard is holding.
+ *
+ * The answers ride along rather than being left to the last PATCH, and that is
+ * what closes the race between them. The template screen arms its CTA the moment
+ * question three is answered, so the completion can be in flight ~300ms behind
+ * that answer's PATCH — and both write the same JSON column by
+ * read-modify-write. If the claim's read wins, `useCase` is written by nobody:
+ * the exact field the template recommendation and every "why this template"
+ * query are built on. Carrying it here means the claim's single guarded
+ * statement writes the complete answer set itself, and nothing is left to
+ * arrive in time.
+ *
+ * `locale` is what the wizard rendered in, so the form gets the same name as the
+ * card that was clicked. Optional: a caller that omits it gets the registry's
+ * English default rather than a 400.
+ */
+export const onboardingCompleteSchema = z.object({
+  template: z.enum(FORM_TEMPLATE_IDS),
+  role: z.enum(ONBOARDING_ROLES).nullable().optional(),
+  industry: z.enum(ONBOARDING_INDUSTRIES).nullable().optional(),
+  useCase: z.enum(ONBOARDING_USE_CASES).nullable().optional(),
+  crm: z.enum(ONBOARDING_CRMS).nullable().optional(),
+  leadVolume: z.enum(ONBOARDING_LEAD_VOLUMES).nullable().optional(),
+  leadSource: z.enum(ONBOARDING_LEAD_SOURCES).nullable().optional(),
+  phone: z.string().trim().max(32).nullable().optional(),
+  /**
+   * Which screens this person was shown, and why the unasked ones were unasked.
+   * Sent from the wizard because the wizard is what resolved the cohort — the API
+   * never probes the IAM itself (that would need `IAM_BASE_URL` in its configmap,
+   * which the web already has).
+   */
+  cohort: z.enum(['cold', 'dapta']).optional(),
+  locale: z.enum(['en', 'es']).optional(),
+});
+export type OnboardingCompleteInput = z.infer<typeof onboardingCompleteSchema>;

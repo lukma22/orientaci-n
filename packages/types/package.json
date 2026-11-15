@@ -1,0 +1,29 @@
+{
+  "name": "@quill/types",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared domain types + zod contracts (the web↔api boundary).",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@quill/engine": "*",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@quill/config": "*"
+  }
+}

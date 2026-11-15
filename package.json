@@ -1,0 +1,35 @@
+{
+  "name": "brujula-dapta-visual",
+  "version": "0.4.2",
+  "private": true,
+  "type": "module",
+  "description": "Brújula con interfaz, componentes y transiciones de Dapta Forms para pruebas locales.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22 <25",
+    "npm": ">=10"
+  },
+  "scripts": {
+    "build:packages": "npm run build --workspace @quill/config && npm run build --workspace @quill/engine && npm run build --workspace @quill/shared && npm run build --workspace @quill/types && npm run build --workspace @brujula/core",
+    "dev": "npm run build:packages && node scripts/dev.mjs",
+    "build": "npm run build:packages && npm run build --workspace @brujula/web",
+    "start": "npm run start --workspace @brujula/web",
+    "typecheck": "npm run build:packages && npm run typecheck --workspace @brujula/web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "check": "npm run typecheck && npm test && npm run build",
+    "pretest": "npm run build:packages",
+    "dev:core": "tsc -p packages/brujula-core/tsconfig.json --watch --preserveWatchOutput"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/node": "^22.10.2",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

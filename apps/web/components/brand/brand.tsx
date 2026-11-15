@@ -1,0 +1,104 @@
+import { IS_DAPTA_BRAND, PRODUCT_NAME } from '@/lib/product-name';
+import { DaptaMark } from './dapta-logo';
+import { FormsLockup, FormsMark, FormsWordmark } from './forms-logo';
+
+export { IS_DAPTA_BRAND, PRODUCT_NAME };
+
+/**
+ * Brand surfaces, with the open-core gate applied once.
+ *
+ * The Dapta artwork may only render on a Dapta build. Dapta's pipeline injects
+ * `NEXT_PUBLIC_PRODUCT_NAME="dForms"` at build time (see `lib/product-name.ts`);
+ * a bare fork keeps the default `Forms` (or its own name) and gets a neutral
+ * typographic brand built from whatever it called the product. That is the same principle as
+ * `MadeWithBadge`: a fork is never forced to carry Dapta branding.
+ *
+ * Call sites use `<BrandLockup>` / `<BrandMark>` / `<PlatformMark>` and never the
+ * raw marks, so the gate cannot be forgotten on a new surface.
+ */
+
+/**
+ * The company behind the product. Constant, not env-driven: unlike
+ * `PRODUCT_NAME` there is nothing here for a deployment to rename — on a fork
+ * the gate above means this string is never reached.
+ */
+const PLATFORM_NAME = 'Dapta';
+
+/**
+ * Full wordmark. Roughly 6:1 — size it with a height class and let width follow
+ * (`h-6 w-auto`), never the other way round.
+ */
+export function BrandLockup({ className, labelled }: { className?: string; labelled?: boolean }) {
+  if (IS_DAPTA_BRAND) {
+    return <FormsLockup className={className} title={labelled ? PRODUCT_NAME : undefined} />;
+  }
+  return (
+    <span className="flex items-center gap-2">
+      <FallbackChip />
+      <span className="text-sm font-semibold text-foreground">{PRODUCT_NAME}</span>
+    </span>
+  );
+}
+
+/**
+ * `Forms.` without the company name — the in-app default.
+ *
+ * At ~3:1 it carries roughly twice the letter height of the full lockup for the
+ * same box, which is why the app chrome uses this and not `BrandLockup`: inside
+ * the product the surrounding shell already establishes that this is Dapta, so
+ * the wordmark only has to say which product. The full lockup is for the
+ * entrances — sign-in and the public landing — where nothing else does.
+ */
+export function BrandWordmark({ className, labelled }: { className?: string; labelled?: boolean }) {
+  if (IS_DAPTA_BRAND) {
+    return <FormsWordmark className={className} title={labelled ? PRODUCT_NAME : undefined} />;
+  }
+  return (
+    <span className="flex items-center gap-2">
+      <FallbackChip />
+      <span className="text-sm font-semibold text-foreground">{PRODUCT_NAME}</span>
+    </span>
+  );
+}
+
+/**
+ * Mark only — for anywhere the lockup will not fit: the collapsed rail, the app
+ * switcher tile, the attribution badge, narrow viewports.
+ */
+export function BrandMark({ className, labelled }: { className?: string; labelled?: boolean }) {
+  if (IS_DAPTA_BRAND) {
+    return <FormsMark className={className} title={labelled ? PRODUCT_NAME : undefined} />;
+  }
+  return <FallbackChip />;
+}
+
+/**
+ * The PLATFORM's mark — Dapta's `d`, not the product's `F`.
+ *
+ * Distinct from `BrandMark` on purpose, and the two are not interchangeable: a
+ * surface signs itself with the mark that matches the name written next to it.
+ * Anything that says "Forms" (in-product chrome AND the "Made with dForms"
+ * attribution badge) takes `BrandMark`; only a surface that names the company
+ * takes this one. Pairing either mark with the other name is the bug this split
+ * exists to prevent. No surface takes it today (the badge did while its copy
+ * read "Powered by Dapta"); it stays because the split is the rule, and the
+ * next surface that names Dapta should not have to rediscover it.
+ *
+ * Same open-core gate as every other surface here — a fork gets its own initial,
+ * never Dapta's `d`.
+ */
+export function PlatformMark({ className, labelled }: { className?: string; labelled?: boolean }) {
+  if (IS_DAPTA_BRAND) {
+    return <DaptaMark className={className} title={labelled ? PLATFORM_NAME : undefined} />;
+  }
+  return <FallbackChip />;
+}
+
+/** The pre-logo placeholder, kept as the fork fallback rather than deleted. */
+function FallbackChip() {
+  return (
+    <span className="rounded-md bg-primary px-2 py-0.5 text-sm font-semibold text-primary-foreground">
+      {PRODUCT_NAME.charAt(0)}
+    </span>
+  );
+}
